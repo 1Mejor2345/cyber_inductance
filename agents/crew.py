@@ -24,8 +24,8 @@ load_dotenv()
 # LLM COMPARTIDO — mismo modelo para los 4 agentes (recomendación del mentor)
 # ─────────────────────────────────────────────────────────────────────────────
 _llm = LLM(
-    model="gemini/gemini-1.5-flash",
-    api_key=os.getenv("GEMINI_API_KEY"),
+    model="gpt-4o-mini",
+    api_key=os.getenv("OPENAI_API_KEY"),
     temperature=0.2,
 )
 
@@ -58,25 +58,20 @@ Catálogo Oficial de Instrumentos — v1.0 Q3-2026
 # REGLAS DE PERFILAMIENTO — v1.0 Q3-2026 (visibles y versionadas)
 # ─────────────────────────────────────────────────────────────────────────────
 REGLAS_PERFILAMIENTO = """
-Sistema de Perfilamiento de Riesgo — v1.0 Q3-2026
-==================================================
-PASO 1 — Horizonte temporal (inferido de la meta):
-  Menos de 2 años  → score -30  (sesgo conservador fuerte)
-  Entre 2 y 5 años → score   0  (neutro)
-  Más de 5 años    → score +30  (sesgo dinámico)
+Sistema de Perfilamiento de Riesgo Integral — v2.0 Q3-2026
+==========================================================
+Analiza las 10 respuestas provistas por el cliente y asigna puntos:
 
-PASO 2 — Tolerancia al riesgo declarada por el usuario:
-  "conservative" / "Conservador" → score -20
-  "balanced"     / "Balanceado"  → score   0
-  "dynamic"      / "Dinámico"    → score +20
+1. Respuestas de sesgo CONSERVADOR → -10 puntos cada una
+2. Respuestas de sesgo BALANCEADO  →   0 puntos cada una
+3. Respuestas de sesgo DINÁMICO    → +10 puntos cada una
 
-PASO 3 — Clasificación final:
-  score <= -20          → Perfil: Conservador
-  -20 < score <= 10     → Perfil: Balanceado
-  score > 10            → Perfil: Dinámico
+Considera la meta general del cliente y su horizonte implícito como un factor adicional (±10 puntos).
 
-NOTA: Si el horizonte no se menciona explícitamente, infierelo de la meta
-      (ej: "comprar casa en 3 años" → horizonte 3 años → Paso 1 neutro).
+Clasificación Final basada en el score total:
+  Score <= -20          → Perfil: Conservador
+  -20 < Score <= 20     → Perfil: Balanceado
+  Score > 20            → Perfil: Dinámico
 """
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -155,27 +150,29 @@ agente_revisor = Agent(
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _limpiar_json(texto: str) -> dict:
-    """Elimina code fences de markdown y parsea el JSON resultante."""
-    texto = texto.strip()
-    for fence in ("```json", "```"):
-        if texto.startswith(fence):
-            texto = texto[len(fence):]
-            break
-    if texto.endswith("```"):
-        texto = texto[:-3]
-    return json.loads(texto.strip())
+    """Extrae el primer bloque JSON del texto, ignorando el texto que lo rodea."""
+    import re
+    match = re.search(r'\{.*\}', texto, re.DOTALL)
+    if match:
+        try:
+            return json.loads(match.group(0))
+        except json.JSONDecodeError:
+            pass
+    return {}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # FUNCIÓN PRINCIPAL: corre los agentes 1, 2 y 3 en cadena
 # ─────────────────────────────────────────────────────────────────────────────
 
-def run_crew(goal_text: str, risk_answer: str) -> dict:
+def run_crew(goal_text: str, risk_answers: dict) -> dict:
     """
     Ejecuta la cadena de 3 agentes de forma secuencial.
     El output de cada agente se pasa como contexto al siguiente.
     Devuelve un diccionario consolidado con perfil, propuesta y explicación.
     """
+    
+    respuestas_str = json.dumps(risk_answers, indent=2, ensure_ascii=False) if isinstance(risk_answers, dict) else str(risk_answers)
 
     tarea_perfil = Task(
         description=f"""
@@ -183,7 +180,7 @@ Analiza al siguiente cliente y clasifícalo en un perfil de riesgo.
 
 Datos del cliente:
 - Meta de inversión: {goal_text}
-- Tolerancia al riesgo declarada: {risk_answer}
+- Respuestas del cuestionario KYC de 10 preguntas: {respuestas_str}
 
 Aplica el sistema de reglas de perfilamiento paso a paso y de forma transparente.
 Responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional ni markdown:
@@ -191,9 +188,10 @@ Responde ÚNICAMENTE con un objeto JSON válido, sin texto adicional ni markdown
     "perfil": "Conservador|Balanceado|Dinámico",
     "score": <número entero calculado>,
     "reglas_usadas": [
-        "Paso 1: horizonte de X años → score Y",
-        "Paso 2: tolerancia declarada → score Y",
-        "Paso 3: score total Z → perfil X"
+        "Suma de puntos conservadores: X",
+        "Suma de puntos dinámicos: Y",
+        "Ajuste por meta: Z",
+        "Score final: W -> Perfil"
     ],
     "explicacion_perfil": "Explicación clara de 2-3 oraciones de por qué este perfil."
 }}

@@ -66,13 +66,13 @@ def analizar():
     """
     datos = request.get_json(silent=True) or {}
     goal_text = datos.get("goalText", "").strip()
-    risk_answer = datos.get("riskAnswer", "balanced")
+    answers = datos.get("answers", {})
 
     if not goal_text:
         return jsonify({"error": "El campo 'goalText' es obligatorio."}), 400
 
     try:
-        resultado = run_crew(goal_text, risk_answer)
+        resultado = run_crew(goal_text, answers)
     except Exception as exc:
         return jsonify({
             "error": "Error al ejecutar los agentes de IA.",
@@ -83,7 +83,7 @@ def analizar():
     db_propuestas[id_propuesta] = {
         "id": id_propuesta,
         "goal": goal_text,
-        "risk_answer": risk_answer,
+        "respuestas": answers,
         "estado": "Pendiente",
         "datos": resultado,
         "log": None,

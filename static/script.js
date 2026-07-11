@@ -12,10 +12,104 @@
 const appState = {
   currentStep: "icebreaker",
   goalText: "",
-  selectedAnswer: null,
+  answers: {},
+  currentQuestionIndex: 0,
   proposalId: null,
   chart: null,
 };
+
+const PROFILING_QUESTIONS = [
+  {
+    id: "etapa_vida",
+    title: "¿Cuál es tu etapa de vida actual?",
+    options: [
+      { id: "empezando", text: "Estudiante / Empezando carrera", type: "Conservative" },
+      { id: "consolidacion", text: "Consolidación profesional", type: "Dynamic" },
+      { id: "retiro", text: "Preparando el retiro / Jubilado", type: "Conservative" }
+    ]
+  },
+  {
+    id: "objetivo",
+    title: "¿Cuál es el objetivo principal de esta inversión?",
+    options: [
+      { id: "proteger", text: "Proteger mi dinero contra la inflación", type: "Conservative" },
+      { id: "ingresos", text: "Generar ingresos periódicos", type: "Balanced" },
+      { id: "crecimiento", text: "Crecimiento a largo plazo o agresivo", type: "Dynamic" }
+    ]
+  },
+  {
+    id: "retiro_fondos",
+    title: "¿Cuándo estimas que necesitarás retirar una parte significativa de este dinero?",
+    options: [
+      { id: "corto", text: "En menos de 2 años", type: "Conservative" },
+      { id: "medio", text: "Entre 3 y 5 años", type: "Balanced" },
+      { id: "largo", text: "En más de 5 años", type: "Dynamic" }
+    ]
+  },
+  {
+    id: "conocimiento",
+    title: "¿Cómo calificarías tu nivel de conocimiento financiero?",
+    options: [
+      { id: "novato", text: "Novato (no he invertido antes)", type: "Conservative" },
+      { id: "intermedio", text: "Intermedio (conozco acciones y bonos)", type: "Balanced" },
+      { id: "avanzado", text: "Avanzado (invierto activamente)", type: "Dynamic" }
+    ]
+  },
+  {
+    id: "experiencia_productos",
+    title: "¿En cuáles de los siguientes productos has invertido anteriormente?",
+    options: [
+      { id: "ahorro", text: "Solo cuentas de ahorro o plazo fijo", type: "Conservative" },
+      { id: "fondos", text: "Fondos mutuos o ETFs", type: "Balanced" },
+      { id: "acciones", text: "Acciones individuales o criptomonedas", type: "Dynamic" }
+    ]
+  },
+  {
+    id: "reaccion_caida",
+    title: "¿Cómo reaccionarías si tu portafolio baja un 20% en un solo mes?",
+    options: [
+      { id: "vender", text: "Vendería todo para evitar más pérdidas", type: "Conservative" },
+      { id: "esperar", text: "No haría nada, esperaría a que se recupere", type: "Balanced" },
+      { id: "comprar", text: "Compraría más, es una oportunidad", type: "Dynamic" }
+    ]
+  },
+  {
+    id: "preferencia_riesgo",
+    title: "Si tuvieras que elegir entre estas opciones, ¿cuál prefieres?",
+    options: [
+      { id: "bajo", text: "Ganancias bajas pero sin riesgo de pérdida", type: "Conservative" },
+      { id: "medio", text: "Ganancias moderadas con algo de fluctuación", type: "Balanced" },
+      { id: "alto", text: "Ganancias altas asumiendo riesgo de perder capital", type: "Dynamic" }
+    ]
+  },
+  {
+    id: "estabilidad_ingresos",
+    title: "¿Cómo describirías la estabilidad de tus ingresos actuales?",
+    options: [
+      { id: "variable", text: "Variables / Inestables", type: "Conservative" },
+      { id: "estable", text: "Estables pero ajustados", type: "Balanced" },
+      { id: "muy_estable", text: "Muy estables y superan mis gastos", type: "Dynamic" }
+    ]
+  },
+  {
+    id: "porcentaje_ahorros",
+    title: "¿Qué porcentaje de tus ahorros totales representa esta inversión?",
+    options: [
+      { id: "alto", text: "Más del 50%", type: "Conservative" },
+      { id: "medio", text: "Entre 20% y 50%", type: "Balanced" },
+      { id: "bajo", text: "Menos del 20%", type: "Dynamic" }
+    ]
+  },
+  {
+    id: "emergencia",
+    title: "Si tuvieras una emergencia médica o pérdida de empleo, ¿necesitarías tocar este dinero?",
+    options: [
+      { id: "si", text: "Sí, inmediatamente", type: "Conservative" },
+      { id: "probablemente", text: "Probablemente una parte", type: "Balanced" },
+      { id: "no", text: "No, tengo un fondo de emergencia separado", type: "Dynamic" }
+    ]
+  }
+];
 
 // ─── Inicialización ──────────────────────────────────────────────────────────
 document.addEventListener("DOMContentLoaded", () => {
@@ -42,6 +136,8 @@ function destroyPortfolioChart() {
 function renderIcebreakerState() {
   setState("icebreaker");
   destroyPortfolioChart();
+  appState.answers = {};
+  appState.currentQuestionIndex = 0;
 
   getPanel().innerHTML = `
     <div class="view">
@@ -87,65 +183,76 @@ function handleGoalSubmit(event) {
     return;
   }
 
-  // Sin llamada a API aquí — mostramos directamente la pregunta de riesgo
-  renderRiskQuestionState();
+  // Iniciar flujo de preguntas
+  renderQuestionState();
 }
 
-// ─── PASO 2: Pregunta de tolerancia al riesgo (estática) ─────────────────────
-function renderRiskQuestionState() {
-  setState("risk-question");
+// ─── PASO 2: Preguntas iterativas ─────────────────────────────────────────────
+function renderQuestionState() {
+  setState("profiling-question");
+  const q = PROFILING_QUESTIONS[appState.currentQuestionIndex];
+  const progress = Math.round((appState.currentQuestionIndex / PROFILING_QUESTIONS.length) * 100);
 
   getPanel().innerHTML = `
     <div class="view">
-      <span class="eyebrow">
-        <span class="h-2.5 w-2.5 rounded-full bg-blue-600"></span>
-        Pregunta del Asesor IA
-      </span>
+      <div class="flex items-center justify-between mb-2">
+        <span class="eyebrow">
+          <span class="h-2.5 w-2.5 rounded-full bg-blue-600"></span>
+          Pregunta ${appState.currentQuestionIndex + 1} de ${PROFILING_QUESTIONS.length}
+        </span>
+        <span class="text-sm font-bold text-slate-400">${progress}% completado</span>
+      </div>
+      
+      <!-- Progress bar -->
+      <div class="w-full bg-slate-200 rounded-full h-1.5 mb-6">
+        <div class="bg-blue-600 h-1.5 rounded-full transition-all duration-300" style="width: ${progress}%"></div>
+      </div>
 
-      <h2 class="mt-6 text-4xl font-black leading-tight tracking-normal text-slate-950">
-        ¿Cómo reaccionarías si tu portafolio baja un 20% en un mes?
+      <h2 class="mt-4 text-3xl font-black leading-tight tracking-normal text-slate-950 md:text-4xl">
+        ${q.title}
       </h2>
 
-      <p class="mt-4 text-lg leading-8 text-slate-500">
-        Esta respuesta, junto con tu meta, determinará tu perfil de inversión.
-      </p>
-
       <div class="choice-grid mt-8">
-        <button class="choice-button" type="button" data-option-id="conservative">
-          <span class="block text-base">Vendería para no perder más y esperaría oportunidad</span>
-          <span class="mt-2 block text-sm font-extrabold text-blue-600">Perfil Conservador</span>
-        </button>
-        <button class="choice-button" type="button" data-option-id="balanced">
-          <span class="block text-base">No haría nada — sé que el mercado se recupera a largo plazo</span>
-          <span class="mt-2 block text-sm font-extrabold text-blue-600">Perfil Balanceado</span>
-        </button>
-        <button class="choice-button" type="button" data-option-id="dynamic">
-          <span class="block text-base">Compraría más, es una oportunidad de precio bajo</span>
-          <span class="mt-2 block text-sm font-extrabold text-blue-600">Perfil Dinámico</span>
-        </button>
+        ${q.options.map(opt => `
+          <button class="choice-button" type="button" data-option-id="${opt.id}">
+            <span class="block text-base">${opt.text}</span>
+          </button>
+        `).join("")}
       </div>
 
       <button class="secondary-button mt-6" type="button" id="back-button">
-        ← Cambiar mi meta
+        ← Atrás
       </button>
     </div>
   `;
 
   document.querySelectorAll("[data-option-id]").forEach((btn) => {
-    btn.addEventListener("click", () => handleRiskAnswer(btn.dataset.optionId));
+    btn.addEventListener("click", () => handleQuestionAnswer(q.id, btn.dataset.optionId, q.options.find(o => o.id === btn.dataset.optionId).text));
   });
-  document.getElementById("back-button").addEventListener("click", renderIcebreakerState);
+  
+  document.getElementById("back-button").addEventListener("click", () => {
+    if (appState.currentQuestionIndex > 0) {
+      appState.currentQuestionIndex--;
+      renderQuestionState();
+    } else {
+      renderIcebreakerState();
+    }
+  });
 }
 
-// ─── PASO 3: El usuario eligió → llamar a los 3 agentes ──────────────────────
-async function handleRiskAnswer(optionId) {
-  appState.selectedAnswer = optionId;
+function handleQuestionAnswer(questionId, optionId, optionText) {
+  appState.answers[questionId] = optionText;
+  appState.currentQuestionIndex++;
 
-  const etiquetas = {
-    conservative: "Conservador",
-    balanced: "Balanceado",
-    dynamic: "Dinámico",
-  };
+  if (appState.currentQuestionIndex < PROFILING_QUESTIONS.length) {
+    renderQuestionState();
+  } else {
+    submitProfiling();
+  }
+}
+
+// ─── PASO 3: El usuario respondió todo → llamar a los 3 agentes ──────────────────────
+async function submitProfiling() {
 
   renderLoaderState(
     `Tus agentes IA están trabajando: perfilando tu riesgo, diseñando tu portafolio y preparando el resumen para el asesor... (puede tomar ~20 segundos)`
@@ -157,7 +264,7 @@ async function handleRiskAnswer(optionId) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         goalText: appState.goalText,
-        riskAnswer: optionId,
+        answers: appState.answers,
       }),
     });
 
