@@ -1,0 +1,749 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Panel del Asesor — Robo-Advisor IA</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+      :root {
+        --cobalt: #2563eb;
+        --mint: #10b981;
+        --ink: #020617;
+        --pearl: #f8fafc;
+        --danger: #dc2626;
+        --warning: #d97706;
+      }
+
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+
+      body {
+        font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+        background: var(--pearl);
+        color: var(--ink);
+        min-height: 100vh;
+      }
+
+      /* ── Header ── */
+      .header {
+        background: #fff;
+        border-bottom: 1px solid rgba(148, 163, 184, 0.15);
+        padding: 1.25rem 2rem;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        box-shadow: 0 4px 20px rgba(15, 23, 42, 0.05);
+        position: sticky;
+        top: 0;
+        z-index: 10;
+      }
+
+      .header-brand {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+      }
+
+      .header-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        background: #eff6ff;
+        border-radius: 999px;
+        padding: 0.45rem 0.9rem;
+        font-size: 0.8rem;
+        font-weight: 800;
+        color: var(--cobalt);
+      }
+
+      .header h1 {
+        font-size: 1.35rem;
+        font-weight: 900;
+        color: var(--ink);
+      }
+
+      .header-actions {
+        display: flex;
+        gap: 0.75rem;
+        align-items: center;
+      }
+
+      .btn {
+        border: 0;
+        border-radius: 999px;
+        cursor: pointer;
+        font-family: inherit;
+        font-weight: 800;
+        padding: 0.65rem 1.2rem;
+        font-size: 0.85rem;
+        transition: transform 150ms ease, box-shadow 150ms ease;
+      }
+
+      .btn:hover { transform: translateY(-2px); }
+
+      .btn-primary {
+        background: linear-gradient(135deg, var(--cobalt), #1d4ed8);
+        color: #fff;
+        box-shadow: 0 12px 28px rgba(37, 99, 235, 0.25);
+      }
+
+      .btn-primary:hover { box-shadow: 0 18px 35px rgba(37, 99, 235, 0.32); }
+
+      .btn-success {
+        background: linear-gradient(135deg, #16a34a, #15803d);
+        color: #fff;
+        box-shadow: 0 10px 24px rgba(22, 163, 74, 0.25);
+      }
+
+      .btn-danger {
+        background: linear-gradient(135deg, var(--danger), #b91c1c);
+        color: #fff;
+        box-shadow: 0 10px 24px rgba(220, 38, 38, 0.25);
+      }
+
+      .btn-warning {
+        background: linear-gradient(135deg, #f59e0b, var(--warning));
+        color: #fff;
+        box-shadow: 0 10px 24px rgba(245, 158, 11, 0.2);
+      }
+
+      .btn-ghost {
+        background: #f1f5f9;
+        color: #475569;
+        box-shadow: none;
+      }
+
+      .btn-sm { padding: 0.45rem 0.9rem; font-size: 0.8rem; }
+
+      /* ── Main layout ── */
+      .main {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 2rem 1.5rem 4rem;
+      }
+
+      .section-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 1.75rem;
+      }
+
+      .section-title { font-size: 1.15rem; font-weight: 900; color: #0f172a; }
+      .section-sub { font-size: 0.85rem; color: #64748b; margin-top: 0.2rem; }
+
+      /* ── Stats bar ── */
+      .stats-bar {
+        display: flex;
+        gap: 1rem;
+        margin-bottom: 2rem;
+        flex-wrap: wrap;
+      }
+
+      .stat-card {
+        flex: 1;
+        min-width: 130px;
+        background: #fff;
+        border-radius: 1.5rem;
+        padding: 1rem 1.25rem;
+        box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
+      }
+
+      .stat-number { font-size: 1.8rem; font-weight: 900; }
+      .stat-label { font-size: 0.78rem; font-weight: 700; color: #64748b; margin-top: 0.2rem; }
+
+      /* ── Cards grid ── */
+      .cards-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(520px, 1fr));
+        gap: 1.5rem;
+      }
+
+      .proposal-card {
+        background: #fff;
+        border-radius: 1.75rem;
+        box-shadow: 0 12px 36px rgba(15, 23, 42, 0.07);
+        overflow: hidden;
+        transition: box-shadow 200ms ease;
+      }
+
+      .proposal-card:hover { box-shadow: 0 18px 48px rgba(15, 23, 42, 0.11); }
+
+      .card-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 1.1rem 1.4rem;
+        border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+      }
+
+      .card-id { font-size: 0.8rem; font-weight: 800; color: #94a3b8; letter-spacing: 0.05em; }
+      .card-date { font-size: 0.75rem; color: #94a3b8; }
+
+      .status-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        border-radius: 999px;
+        padding: 0.35rem 0.85rem;
+        font-size: 0.78rem;
+        font-weight: 900;
+      }
+
+      .status-pendiente { background: #fef3c7; color: #92400e; }
+      .status-aprobado  { background: #dcfce7; color: #14532d; }
+      .status-rechazado { background: #fee2e2; color: #7f1d1d; }
+      .status-editado   { background: #ede9fe; color: #4c1d95; }
+
+      .card-body { padding: 1.25rem 1.4rem; }
+
+      /* ── Perfil ── */
+      .perfil-row {
+        display: flex;
+        align-items: baseline;
+        gap: 0.75rem;
+        margin-bottom: 0.75rem;
+      }
+
+      .perfil-badge {
+        font-size: 1.1rem;
+        font-weight: 900;
+        color: var(--cobalt);
+      }
+
+      .perfil-score {
+        font-size: 0.8rem;
+        font-weight: 700;
+        color: #94a3b8;
+      }
+
+      .info-block {
+        background: var(--pearl);
+        border-radius: 1.25rem;
+        padding: 0.85rem 1rem;
+        margin-bottom: 0.75rem;
+        font-size: 0.85rem;
+        color: #475569;
+        line-height: 1.6;
+      }
+
+      .info-block strong {
+        display: block;
+        font-size: 0.72rem;
+        font-weight: 900;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: #94a3b8;
+        margin-bottom: 0.3rem;
+      }
+
+      /* ── Mini chart ── */
+      .mini-chart-wrap {
+        display: grid;
+        grid-template-columns: 120px 1fr;
+        gap: 0.75rem;
+        align-items: center;
+        margin-bottom: 0.75rem;
+      }
+
+      .mini-chart-shell {
+        height: 120px;
+        display: grid;
+        place-items: center;
+      }
+
+      .asset-mini-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.5rem;
+        padding: 0.3rem 0;
+        border-bottom: 1px solid rgba(148, 163, 184, 0.08);
+        font-size: 0.8rem;
+      }
+
+      .asset-mini-dot {
+        width: 0.6rem;
+        height: 0.6rem;
+        border-radius: 999px;
+        flex-shrink: 0;
+      }
+
+      /* ── Acciones ── */
+      .card-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.6rem;
+        margin-top: 1rem;
+        padding-top: 1rem;
+        border-top: 1px solid rgba(148, 163, 184, 0.1);
+      }
+
+      /* ── Editar form ── */
+      .edit-form {
+        margin-top: 1rem;
+        padding: 1rem;
+        background: #f8fafc;
+        border-radius: 1.25rem;
+        border: 1px solid rgba(37, 99, 235, 0.15);
+        display: none;
+      }
+
+      .edit-form.visible { display: block; }
+
+      .edit-form label {
+        display: block;
+        font-size: 0.78rem;
+        font-weight: 800;
+        color: #64748b;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-bottom: 0.4rem;
+        margin-top: 0.75rem;
+      }
+
+      .edit-form input,
+      .edit-form textarea {
+        width: 100%;
+        border: 1px solid rgba(148, 163, 184, 0.25);
+        border-radius: 0.85rem;
+        padding: 0.7rem 0.9rem;
+        font-family: inherit;
+        font-size: 0.85rem;
+        color: var(--ink);
+        background: #fff;
+        outline: none;
+        resize: vertical;
+        transition: border-color 150ms ease;
+      }
+
+      .edit-form input:focus,
+      .edit-form textarea:focus { border-color: var(--cobalt); }
+
+      /* ── Audit log ── */
+      .audit-log {
+        margin-top: 0.75rem;
+        background: #f0fdf4;
+        border-radius: 1.25rem;
+        padding: 0.85rem 1rem;
+        font-size: 0.8rem;
+        color: #166534;
+      }
+
+      .audit-log.rechazado { background: #fef2f2; color: #991b1b; }
+      .audit-log.editado   { background: #f5f3ff; color: #4c1d95; }
+
+      .audit-log strong {
+        display: block;
+        font-weight: 900;
+        margin-bottom: 0.35rem;
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+
+      /* ── Alertas ── */
+      .alertas-box {
+        background: #fff7ed;
+        border-radius: 1rem;
+        padding: 0.75rem 1rem;
+        margin-bottom: 0.75rem;
+        font-size: 0.82rem;
+        color: #9a3412;
+      }
+
+      /* ── Empty state ── */
+      .empty-state {
+        grid-column: 1 / -1;
+        text-align: center;
+        padding: 5rem 2rem;
+      }
+
+      .empty-icon {
+        font-size: 3.5rem;
+        margin-bottom: 1rem;
+      }
+
+      .empty-state h3 { font-size: 1.2rem; font-weight: 800; color: #0f172a; }
+      .empty-state p { color: #64748b; margin-top: 0.5rem; font-size: 0.9rem; }
+
+      /* ── Responsive ── */
+      @media (max-width: 680px) {
+        .cards-grid { grid-template-columns: 1fr; }
+        .header { padding: 1rem; }
+        .main { padding: 1.25rem 1rem 4rem; }
+        .mini-chart-wrap { grid-template-columns: 1fr; }
+      }
+    </style>
+  </head>
+  <body>
+    <!-- ── Header ── -->
+    <header class="header">
+      <div class="header-brand">
+        <div class="header-badge">
+          <span style="width:0.6rem;height:0.6rem;border-radius:999px;background:#10b981;"></span>
+          Asesor Autorizado
+        </div>
+        <h1>🛡️ Panel de Revisión</h1>
+      </div>
+      <div class="header-actions">
+        <a href="/" style="text-decoration:none;">
+          <button class="btn btn-ghost">← Ir a la app</button>
+        </a>
+        <button class="btn btn-primary" onclick="cargarPropuestas()">↻ Refrescar</button>
+      </div>
+    </header>
+
+    <!-- ── Main ── -->
+    <main class="main">
+      <!-- Stats -->
+      <div class="stats-bar" id="stats-bar">
+        <div class="stat-card">
+          <div class="stat-number" id="stat-total" style="color:#2563eb;">—</div>
+          <div class="stat-label">Total propuestas</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number" id="stat-pendiente" style="color:#d97706;">—</div>
+          <div class="stat-label">Pendientes</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number" id="stat-aprobado" style="color:#16a34a;">—</div>
+          <div class="stat-label">Aprobadas</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number" id="stat-rechazado" style="color:#dc2626;">—</div>
+          <div class="stat-label">Rechazadas</div>
+        </div>
+      </div>
+
+      <div class="section-header">
+        <div>
+          <p class="section-title">Propuestas generadas por IA</p>
+          <p class="section-sub">Revisa, edita y aprueba antes de recomendar al cliente.</p>
+        </div>
+      </div>
+
+      <div class="cards-grid" id="cards-grid">
+        <div class="empty-state">
+          <div class="orb-loading" style="width:3rem;height:3rem;border-radius:999px;background:conic-gradient(from 180deg,#2563eb,#10b981,#dbeafe,#2563eb);animation:spin 1.2s linear infinite;margin:0 auto 1rem;"></div>
+          <p style="color:#64748b;">Cargando propuestas...</p>
+        </div>
+      </div>
+    </main>
+
+    <style>
+      @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+
+    <script>
+      // ── Cargar y renderizar propuestas ────────────────────────────────────
+      async function cargarPropuestas() {
+        try {
+          const res = await fetch("/api/propuestas");
+          const propuestas = await res.json();
+          renderStats(propuestas);
+          renderCards(propuestas);
+        } catch (e) {
+          document.getElementById("cards-grid").innerHTML = `
+            <div class="empty-state">
+              <div class="empty-icon">⚠️</div>
+              <h3>No se pudo conectar con el servidor</h3>
+              <p>${e.message}</p>
+            </div>`;
+        }
+      }
+
+      function renderStats(propuestas) {
+        document.getElementById("stat-total").textContent = propuestas.length;
+        document.getElementById("stat-pendiente").textContent =
+          propuestas.filter((p) => p.estado === "Pendiente").length;
+        document.getElementById("stat-aprobado").textContent =
+          propuestas.filter((p) => p.estado.includes("Aprobado")).length;
+        document.getElementById("stat-rechazado").textContent =
+          propuestas.filter((p) => p.estado === "Rechazado").length;
+      }
+
+      function renderCards(propuestas) {
+        const grid = document.getElementById("cards-grid");
+
+        if (propuestas.length === 0) {
+          grid.innerHTML = `
+            <div class="empty-state">
+              <div class="empty-icon">📭</div>
+              <h3>No hay propuestas aún</h3>
+              <p>Cuando un cliente complete el flujo, la propuesta aparecerá aquí automáticamente.</p>
+              <a href="/" style="display:inline-block;margin-top:1.5rem;">
+                <button class="btn btn-primary">Ir a la app del cliente →</button>
+              </a>
+            </div>`;
+          return;
+        }
+
+        grid.innerHTML = propuestas
+          .map((p) => buildCardHTML(p))
+          .join("");
+
+        // Montar mini-charts y event listeners
+        propuestas.forEach((p) => {
+          mountMiniChart(p);
+          mountCardListeners(p);
+        });
+      }
+
+      function statusClass(estado) {
+        if (estado === "Pendiente") return "status-pendiente";
+        if (estado.includes("Aprobado")) return "status-aprobado";
+        if (estado === "Rechazado") return "status-rechazado";
+        return "status-editado";
+      }
+
+      function statusIcon(estado) {
+        if (estado === "Pendiente") return "⏳";
+        if (estado.includes("Aprobado")) return "✅";
+        if (estado === "Rechazado") return "❌";
+        return "✏️";
+      }
+
+      function buildCardHTML(p) {
+        const d = p.datos || {};
+        const isPendiente = p.estado === "Pendiente";
+
+        // Asset rows mini
+        const assetRows = (d.asignacion || [])
+          .map(
+            (a) => `
+            <div class="asset-mini-row">
+              <div style="display:flex;align-items:center;gap:0.4rem;">
+                <span class="asset-mini-dot" style="background:${a.color}"></span>
+                <span>${a.nombre}</span>
+              </div>
+              <strong>${a.porcentaje}%</strong>
+            </div>`
+          )
+          .join("");
+
+        // Alertas
+        const alertasHTML =
+          d.alertas && d.alertas.length > 0
+            ? `<div class="alertas-box">⚠ ${d.alertas.join(" · ")}</div>`
+            : "";
+
+        // Audit log
+        let auditHTML = "";
+        if (p.log) {
+          const logClass =
+            p.estado === "Rechazado"
+              ? "rechazado"
+              : p.estado.includes("Editado")
+              ? "editado"
+              : "";
+          auditHTML = `
+            <div class="audit-log ${logClass}">
+              <strong>📋 Registro de Auditoría</strong>
+              <div><b>Fecha:</b> ${p.log.fecha}</div>
+              <div><b>Responsable:</b> ${p.log.responsable}</div>
+              <div><b>Acción:</b> ${p.log.accion}</div>
+              <div><b>Versión reglas:</b> ${p.log.version_reglas}</div>
+              ${p.log.observaciones && p.log.observaciones !== "Sin observaciones"
+                ? `<div><b>Observaciones:</b> ${p.log.observaciones}</div>`
+                : ""}
+            </div>`;
+        }
+
+        // Botones de acción (solo si está Pendiente)
+        const accionesHTML = isPendiente
+          ? `<div class="card-actions">
+              <button class="btn btn-success btn-sm" onclick="accionRapida('${p.id}','Aprobado')">
+                ✅ Aprobar
+              </button>
+              <button class="btn btn-warning btn-sm" onclick="toggleEditForm('${p.id}')">
+                ✏️ Editar y aprobar
+              </button>
+              <button class="btn btn-danger btn-sm" onclick="accionRapida('${p.id}','Rechazado')">
+                ❌ Rechazar
+              </button>
+            </div>
+
+            <!-- Formulario de edición — HU3 -->
+            <div class="edit-form" id="edit-form-${p.id}">
+              <label for="nombre-${p.id}">Tu nombre</label>
+              <input id="nombre-${p.id}" type="text" placeholder="Ej. José Luis Paladines" value="Asesor" />
+
+              <label for="obs-${p.id}">Observaciones / Cambios realizados</label>
+              <textarea id="obs-${p.id}" rows="3"
+                placeholder="Describe qué editaste o por qué apruebas con condiciones..."></textarea>
+
+              <div style="display:flex;gap:0.6rem;margin-top:0.75rem;">
+                <button class="btn btn-success btn-sm"
+                  onclick="accionConObservaciones('${p.id}','Editado y Aprobado')">
+                  Confirmar edición y aprobar
+                </button>
+                <button class="btn btn-ghost btn-sm" onclick="toggleEditForm('${p.id}')">
+                  Cancelar
+                </button>
+              </div>
+            </div>`
+          : "";
+
+        return `
+          <div class="proposal-card" id="card-${p.id}">
+            <div class="card-header">
+              <div>
+                <div class="card-id">ID: ${p.id}</div>
+                <div class="card-date">${p.creado_en || ""}</div>
+              </div>
+              <span class="status-badge ${statusClass(p.estado)}">
+                ${statusIcon(p.estado)} ${p.estado}
+              </span>
+            </div>
+
+            <div class="card-body">
+              <!-- Perfil -->
+              <div class="perfil-row">
+                <span class="perfil-badge">${d.perfil || "—"}</span>
+                <span class="perfil-score">Score: ${d.score ?? "—"}</span>
+              </div>
+
+              <!-- Meta del cliente -->
+              <div class="info-block">
+                <strong>Meta del cliente</strong>
+                ${p.goal || "—"}
+              </div>
+
+              <!-- Resumen para el asesor (del Agente Explicador) -->
+              <div class="info-block">
+                <strong>Resumen del Agente Explicador</strong>
+                ${d.resumen_asesor || "—"}
+              </div>
+
+              ${alertasHTML}
+
+              <!-- Mini chart + asignación -->
+              <div class="mini-chart-wrap">
+                <div class="mini-chart-shell">
+                  <canvas id="chart-${p.id}" width="120" height="120"
+                    aria-label="Distribución de activos" role="img"></canvas>
+                </div>
+                <div>${assetRows}</div>
+              </div>
+
+              <!-- Riesgo -->
+              <div class="info-block" style="background:#f0fdf4;">
+                <strong>Nivel de riesgo</strong>
+                ${d.riesgo || "—"}
+              </div>
+
+              <!-- Justificación -->
+              <div class="info-block">
+                <strong>Justificación de la IA</strong>
+                ${d.justificacion || "—"}
+              </div>
+
+              <!-- Disclaimer -->
+              <div style="font-size:0.75rem;color:#94a3b8;margin-top:0.5rem;padding:0.5rem 0.75rem;background:#f8fafc;border-radius:0.75rem;">
+                ⚖ ${d.disclaimer || ""}
+              </div>
+
+              <!-- Reglas usadas -->
+              ${d.reglas_usadas && d.reglas_usadas.length > 0
+                ? `<details style="margin-top:0.75rem;cursor:pointer;font-size:0.8rem;color:#64748b;">
+                    <summary style="font-weight:700;">📋 Reglas de perfilamiento aplicadas</summary>
+                    <ul style="margin-top:0.5rem;list-style:disc;padding-left:1.25rem;line-height:1.8;">
+                      ${d.reglas_usadas.map((r) => `<li>${r}</li>`).join("")}
+                    </ul>
+                  </details>`
+                : ""}
+
+              ${accionesHTML}
+              ${auditHTML}
+            </div>
+          </div>`;
+      }
+
+      // ── Mini chart por card ────────────────────────────────────────────────
+      const miniCharts = {};
+
+      function mountMiniChart(p) {
+        const d = p.datos || {};
+        const canvas = document.getElementById(`chart-${p.id}`);
+        if (!canvas || !d.asignacion) return;
+
+        if (miniCharts[p.id]) {
+          miniCharts[p.id].destroy();
+        }
+
+        miniCharts[p.id] = new Chart(canvas, {
+          type: "doughnut",
+          data: {
+            labels: d.asignacion.map((a) => a.nombre),
+            datasets: [{
+              data: d.asignacion.map((a) => a.porcentaje),
+              backgroundColor: d.asignacion.map((a) => a.color),
+              borderWidth: 0,
+              hoverOffset: 8,
+            }],
+          },
+          options: {
+            responsive: false,
+            cutout: "65%",
+            plugins: { legend: { display: false }, tooltip: { enabled: true } },
+            animation: { duration: 700 },
+          },
+        });
+      }
+
+      // ── Listeners de botones ───────────────────────────────────────────────
+      function mountCardListeners(p) {
+        // nada adicional necesario — onclick inline
+      }
+
+      function toggleEditForm(id) {
+        const form = document.getElementById(`edit-form-${id}`);
+        if (form) form.classList.toggle("visible");
+      }
+
+      // Aprobar o Rechazar sin observaciones
+      async function accionRapida(id, accion) {
+        const nombre = prompt(`¿Tu nombre para el registro? (Acción: ${accion})`, "Asesor");
+        if (nombre === null) return; // canceló
+
+        await enviarAccion(id, accion, nombre.trim() || "Asesor", "");
+      }
+
+      // Editar y aprobar con observaciones
+      async function accionConObservaciones(id, accion) {
+        const nombre = document.getElementById(`nombre-${id}`)?.value.trim() || "Asesor";
+        const obs    = document.getElementById(`obs-${id}`)?.value.trim() || "";
+        await enviarAccion(id, accion, nombre, obs);
+      }
+
+      async function enviarAccion(id, accion, asesorNombre, observaciones) {
+        const card = document.getElementById(`card-${id}`);
+        if (card) card.style.opacity = "0.5";
+
+        try {
+          const res = await fetch(`/api/asesor/accion/${id}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ accion, asesor_nombre: asesorNombre, observaciones }),
+          });
+
+          if (!res.ok) throw new Error("Error al guardar la acción");
+          await cargarPropuestas(); // Recarga todo
+        } catch (e) {
+          if (card) card.style.opacity = "1";
+          alert(`Error: ${e.message}`);
+        }
+      }
+
+      // ── Carga inicial ──────────────────────────────────────────────────────
+      cargarPropuestas();
+
+      // Auto-refresh cada 30 segundos
+      setInterval(cargarPropuestas, 30000);
+    </script>
+  </body>
+</html>
