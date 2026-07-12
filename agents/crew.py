@@ -4,7 +4,9 @@ import time
 import logging
 from datetime import datetime
 from crewai import Agent, Crew, Process, Task, LLM
+from crewai.tools import tool
 from dotenv import load_dotenv
+from agents.market_data import obtener_catalogo_real, buscar_instrumento, validar_propuesta
 
 load_dotenv()
 
@@ -86,15 +88,7 @@ def _ejecutar_con_retry(crew: Crew, max_intentos: int = 5) -> str:
 # CATÁLOGOS Y REGLAS (sin cambios)
 # ============================================================================
 
-CATALOGO_INSTRUMENTOS = """
-Catálogo Oficial de Instrumentos — v1.0
-1. Bonos del Estado AAA (Riesgo Muy Bajo)
-2. ETFs S&P 500 ej. SPY (Riesgo Medio)
-3. Fondos Monetarios Líquidos (Riesgo Muy Bajo)
-4. ETFs Tecnología ej. QQQ (Riesgo Alto)
-5. Bonos Corporativos Grado Inversión (Riesgo Bajo)
-6. Alternativos Líquidos (Riesgo Medio-Bajo)
-"""
+# El catálogo se obtiene dinámicamente de market_data.py usando yfinance
 
 REGLAS_PERFILAMIENTO = """
 Sistema de Perfilamiento v2.0
@@ -119,8 +113,14 @@ REGLAS ESTRICTAS DE FORMATO DE SALIDA:
 """
 
 # ============================================================================
-# AGENTES - Ahora usan función factory para poder recrear con fallback
+# AGENTES Y HERRAMIENTAS
 # ============================================================================
+
+@tool("Consultar Instrumento Real")
+def tool_consultar_mercado(ticker: str) -> str:
+    """Consulta el precio actual, rendimiento, beta y sector de un instrumento financiero real por su ticker (ej. SPY, QQQ, BND)."""
+    return json.dumps(buscar_instrumento(ticker))
+
 
 def _crear_agentes(modelo: str = None):
     """Crea los 4 agentes con el modelo especificado."""
@@ -141,13 +141,27 @@ IMPORTANTE: Tu respuesta DEBE ser exclusivamente el JSON solicitado, sin ningún
     
     analista = Agent(
         role="Analista de Portafolios",
-        goal="Diseñar una distribución de activos coherente usando solo el catálogo. RESPONDE SOLO JSON VÁLIDO.",
+        goal="Diseñar una distribución de activos usando exclusivamente los instrumentos reales del catálogo. RESPONDE SOLO JSON VÁLIDO.",
         backstory=f"""{REGLAS_SALIDA_JSON}
 
-No prometes rentabilidades. Solo usas este catálogo:
-{CATALOGO_INSTRUMENTOS}
+Solo puedes usar los instrumentos del catálogo que se te proporcionará. 
+Es crítico que uses los Tickers correctos.
 
-IMPORTANTE: Tu respuesta DEBE ser exclusivamente el JSON solicitado, sin ningún texto adicional.""",
+IMPORTANTE: Tu respuesta DEBE ser exclusivamente el JSON solicitado.""",
+        llm=llm, verbose=True, allow_delegation=False,
+        max_rpm=MAX_RPM_SEGURO
+    )
+    
+    verificador = Agent(
+        role="Verificador de Mercados",
+        goal="Verificar que los instrumentos propuestos existen y obtener sus datos reales para validar la propuesta. RESPONDE SOLO JSON VÁLIDO.",
+        backstory=f"""{REGLAS_SALIDA_JSON}
+        
+Eres el control de calidad antialucinación.
+Revisas la propuesta del analista y consultas el mercado real.
+
+IMPORTANTE: Tu respuesta DEBE ser exclusivamente el JSON solicitado, añadiendo los datos de mercado a la justificación.""",
+        tools=[tool_consultar_mercado],
         llm=llm, verbose=True, allow_delegation=False,
         max_rpm=MAX_RPM_SEGURO
     )
@@ -176,7 +190,7 @@ IMPORTANTE: Tu respuesta DEBE ser exclusivamente el JSON solicitado, sin ningún
         max_rpm=MAX_RPM_SEGURO
     )
     
-    return perfilador, analista, explicador, revisor
+    return perfilador, analista, verificador, explicador, revisor
 
 
 def _limpiar_json(texto: str) -> dict:
@@ -235,7 +249,10 @@ def run_crew_completo(goal_text: str, risk_answers: dict) -> dict:
     Clasificación: <=-20 (Conservador), -19 a 20 (Moderado), >20 (Agresivo)
     """
     
-    agente_perfilador, agente_analista, agente_explicador, _ = _crear_agentes()
+    agente_perfilador, agente_analista, agente_verificador, agente_explicador, _ = _crear_agentes()
+    
+    # Obtener catálogo en vivo de yfinance
+    catalogo_vivo = obtener_catalogo_real()
     
     # Tarea 1: Perfilamiento con instrucciones JSON estrictas
     tarea_perfil = Task(
@@ -272,41 +289,63 @@ RESPONDE EXCLUSIVAMENTE CON ESTE JSON (sin markdown, sin texto adicional):
     tarea_propuesta = Task(
         description=f"""Diseña una propuesta de portafolio basada en el perfil calculado.
 
-CATÁLOGO DE INSTRUMENTOS DISPONIBLES:
-{CATALOGO_INSTRUMENTOS}
+CATÁLOGOS DE INSTRUMENTOS REALES (Actualizado en tiempo real):
+{catalogo_vivo}
 
 RESPONDE EXCLUSIVAMENTE CON ESTE JSON (sin markdown, sin texto adicional):
 {{
   "asignacion": [
-    {{"nombre": "Nombre del activo", "porcentaje": 40, "color": "#2563eb"}},
-    {{"nombre": "Otro activo", "porcentaje": 35, "color": "#10b981"}}
+    {{"nombre": "Nombre Real del Activo", "ticker": "TICKER", "porcentaje": 40, "color": "#2563eb"}},
+    {{"nombre": "Otro Activo", "ticker": "TICKER", "porcentaje": 35, "color": "#10b981"}}
   ],
   "riesgo": "descripción del nivel de riesgo del portafolio",
-  "justificacion": "justificación de la asignación propuesta",
-  "disclaimer": "aviso legal obligatorio sobre riesgos"
+  "justificacion_preliminar": "justificación de la asignación"
 }}
 
 REGLAS:
 1. La suma de porcentajes debe ser EXACTAMENTE 100
-2. Solo usa instrumentos del catálogo oficial
-3. Colores disponibles: #2563eb (azul), #10b981 (verde), #38bdf8 (celeste), #a7f3d0 (verde claro)
-4. NO prometas rentabilidades específicas
+2. Usa SOLO los instrumentos y Tickers de la lista proporcionada
+3. INCLUYE SIEMPRE el campo 'ticker' en cada activo
+4. Colores disponibles: #2563eb (azul), #10b981 (verde), #38bdf8 (celeste), #a7f3d0 (verde claro)
 """,
-        expected_output="JSON con asignacion, riesgo, justificacion y disclaimer",
+        expected_output="JSON con asignacion, riesgo y justificacion_preliminar",
         agent=agente_analista,
         context=[tarea_perfil]
     )
 
-    # Tarea 3: Explicaciones con instrucciones JSON estrictas
+    # Tarea 3: Verificación de mercado
+    tarea_verificacion = Task(
+        description=f"""Revisa la asignación propuesta por el analista.
+Usa tu herramienta 'Consultar Instrumento Real' para buscar CADA ticker propuesto y verificar:
+1. Que el instrumento existe en el mercado.
+2. Cuál es su precio actual y rendimiento.
+
+Luego de verificar todos los tickers, genera una justificación final que incorpore estos datos reales.
+
+RESPONDE EXCLUSIVAMENTE CON ESTE JSON:
+{{
+  "justificacion": "justificación FINAL de la asignación mencionando los datos de mercado reales verificados como rendimientos o sectores",
+  "disclaimer": "aviso legal obligatorio indicando que los precios mostrados son referenciales y fluctúan",
+  "mercado_verificado": true
+}}
+""",
+        expected_output="JSON con justificacion final, disclaimer y flag de verificacion",
+        agent=agente_verificador,
+        context=[tarea_propuesta]
+    )
+
+    # Tarea 4: Explicaciones con instrucciones JSON estrictas
     tarea_explicacion = Task(
         description=f"""Genera explicaciones claras para el cliente y el asesor.
+        
+Toma en cuenta los datos de mercado reales encontrados por el Verificador.
 
 RESPONDE EXCLUSIVAMENTE CON ESTE JSON (sin markdown, sin texto adicional):
 {{
   "explicacion_cliente": "explicación en lenguaje simple para el cliente",
-  "resumen_asesor": "resumen técnico para el asesor humano",
-  "alertas": ["alerta 1 si existe alguna incoherencia o riesgo"],
-  "version_reglas": "v1.0"
+  "resumen_asesor": "resumen técnico para el asesor humano (incluyendo rendimiento y sectores de los activos propuestos)",
+  "alertas": ["alerta 1 si existe alguna incoherencia o riesgo en los mercados"],
+  "version_reglas": "v2.0-yfinance"
 }}
 
 REGLAS:
@@ -317,12 +356,12 @@ REGLAS:
 """,
         expected_output="JSON con explicacion_cliente, resumen_asesor, alertas y version_reglas",
         agent=agente_explicador,
-        context=[tarea_perfil, tarea_propuesta]
+        context=[tarea_perfil, tarea_propuesta, tarea_verificacion]
     )
 
     crew = Crew(
-        agents=[agente_perfilador, agente_analista, agente_explicador], 
-        tasks=[tarea_perfil, tarea_propuesta, tarea_explicacion], 
+        agents=[agente_perfilador, agente_analista, agente_verificador, agente_explicador], 
+        tasks=[tarea_perfil, tarea_propuesta, tarea_verificacion, tarea_explicacion], 
         process=Process.sequential, 
         verbose=True,
         max_rpm=MAX_RPM_SEGURO
@@ -331,12 +370,13 @@ REGLAS:
     # Ejecutar con retry automático para rate limits
     _ejecutar_con_retry(crew)
     
-    # Combinamos las 3 respuestas JSON en un solo mega diccionario
+    # Combinamos las respuestas JSON en un solo mega diccionario
     out1 = _limpiar_json(tarea_perfil.output.raw)
     out2 = _limpiar_json(tarea_propuesta.output.raw)
-    out3 = _limpiar_json(tarea_explicacion.output.raw)
+    out3 = _limpiar_json(tarea_verificacion.output.raw)
+    out4 = _limpiar_json(tarea_explicacion.output.raw)
     
-    resultado_final = {**out1, **out2, **out3}
+    resultado_final = {**out1, **out2, **out3, **out4}
     
     # VALIDACIÓN CRÍTICA: Verificar que NO hay textos basura en los valores
     resultado_limpio = _validar_y_limpiar_resultado(resultado_final)
@@ -386,7 +426,7 @@ def _validar_y_limpiar_resultado(data: dict) -> dict:
 
 
 def registrar_auditoria(propuesta: dict, accion: str, asesor_nombre: str) -> dict:
-    _, _, _, agente_revisor = _crear_agentes()
+    _, _, _, _, agente_revisor = _crear_agentes()
     
     tarea_auditoria = Task(
         description=f"Asesor: {asesor_nombre} tomó accion: {accion} sobre perfil {propuesta.get('perfil')}. Genera JSON: {{'fecha': '{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}', 'responsable': '{asesor_nombre}', 'accion': '{accion}', 'version_reglas': 'v1.0 Q3-2026', 'observaciones': 'Ninguna'}}",

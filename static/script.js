@@ -25,6 +25,9 @@ const PROFILING_QUESTIONS = [
   {
     id: "etapa_vida",
     title: "¿Cuál es tu etapa de vida actual?",
+    dimension: "Horizonte Temporal",
+    dimensionIcon: "🕐",
+    dimensionDescription: "Define cuánto tiempo puedes mantener tu inversión",
     options: [
       { id: "empezando", text: "Estudiante / Empezando carrera", type: "Conservative" },
       { id: "consolidacion", text: "Consolidación profesional", type: "Dynamic" },
@@ -34,6 +37,9 @@ const PROFILING_QUESTIONS = [
   {
     id: "objetivo",
     title: "¿Cuál es el objetivo principal de esta inversión?",
+    dimension: "Objetivo de Inversión",
+    dimensionIcon: "🎯",
+    dimensionDescription: "Determina qué tipo de rendimiento buscas",
     options: [
       { id: "proteger", text: "Proteger mi dinero contra la inflación", type: "Conservative" },
       { id: "ingresos", text: "Generar ingresos periódicos", type: "Balanced" },
@@ -43,6 +49,9 @@ const PROFILING_QUESTIONS = [
   {
     id: "retiro_fondos",
     title: "¿Cuándo estimas que necesitarás retirar una parte significativa de este dinero?",
+    dimension: "Horizonte Temporal",
+    dimensionIcon: "🕐",
+    dimensionDescription: "Indica cuándo necesitarás acceder a tu dinero",
     options: [
       { id: "corto", text: "En menos de 2 años", type: "Conservative" },
       { id: "medio", text: "Entre 3 y 5 años", type: "Balanced" },
@@ -52,6 +61,9 @@ const PROFILING_QUESTIONS = [
   {
     id: "conocimiento",
     title: "¿Cómo calificarías tu nivel de conocimiento financiero?",
+    dimension: "Experiencia Financiera",
+    dimensionIcon: "📚",
+    dimensionDescription: "Evalúa tu familiaridad con productos de inversión",
     options: [
       { id: "novato", text: "Novato (no he invertido antes)", type: "Conservative" },
       { id: "intermedio", text: "Intermedio (conozco acciones y bonos)", type: "Balanced" },
@@ -61,6 +73,9 @@ const PROFILING_QUESTIONS = [
   {
     id: "experiencia_productos",
     title: "¿En cuáles de los siguientes productos has invertido anteriormente?",
+    dimension: "Experiencia Financiera",
+    dimensionIcon: "📚",
+    dimensionDescription: "Mide tu historial con distintos tipos de activos",
     options: [
       { id: "ahorro", text: "Solo cuentas de ahorro o plazo fijo", type: "Conservative" },
       { id: "fondos", text: "Fondos mutuos o ETFs", type: "Balanced" },
@@ -70,6 +85,9 @@ const PROFILING_QUESTIONS = [
   {
     id: "reaccion_caida",
     title: "¿Cómo reaccionarías si tu portafolio baja un 20% en un solo mes?",
+    dimension: "Tolerancia al Riesgo",
+    dimensionIcon: "📊",
+    dimensionDescription: "Mide tu reacción emocional ante pérdidas del mercado",
     options: [
       { id: "vender", text: "Vendería todo para evitar más pérdidas", type: "Conservative" },
       { id: "esperar", text: "No haría nada, esperaría a que se recupere", type: "Balanced" },
@@ -79,6 +97,9 @@ const PROFILING_QUESTIONS = [
   {
     id: "preferencia_riesgo",
     title: "Si tuvieras que elegir entre estas opciones, ¿cuál prefieres?",
+    dimension: "Tolerancia al Riesgo",
+    dimensionIcon: "📊",
+    dimensionDescription: "Evalúa tu preferencia entre seguridad y rentabilidad",
     options: [
       { id: "bajo", text: "Ganancias bajas pero sin riesgo de pérdida", type: "Conservative" },
       { id: "medio", text: "Ganancias moderadas con algo de fluctuación", type: "Balanced" },
@@ -88,6 +109,9 @@ const PROFILING_QUESTIONS = [
   {
     id: "estabilidad_ingresos",
     title: "¿Cómo describirías la estabilidad de tus ingresos actuales?",
+    dimension: "Capacidad Financiera",
+    dimensionIcon: "💰",
+    dimensionDescription: "Evalúa si tus ingresos permiten asumir riesgos",
     options: [
       { id: "variable", text: "Variables / Inestables", type: "Conservative" },
       { id: "estable", text: "Estables pero ajustados", type: "Balanced" },
@@ -97,6 +121,9 @@ const PROFILING_QUESTIONS = [
   {
     id: "porcentaje_ahorros",
     title: "¿Qué porcentaje de tus ahorros totales representa esta inversión?",
+    dimension: "Capacidad Financiera",
+    dimensionIcon: "💰",
+    dimensionDescription: "Indica cuánto de tu patrimonio estás arriesgando",
     options: [
       { id: "alto", text: "Más del 50%", type: "Conservative" },
       { id: "medio", text: "Entre 20% y 50%", type: "Balanced" },
@@ -106,6 +133,9 @@ const PROFILING_QUESTIONS = [
   {
     id: "emergencia",
     title: "Si tuvieras una emergencia médica o pérdida de empleo, ¿necesitarías tocar este dinero?",
+    dimension: "Capacidad Financiera",
+    dimensionIcon: "💰",
+    dimensionDescription: "Determina si tienes colchón financiero de respaldo",
     options: [
       { id: "si", text: "Sí, inmediatamente", type: "Conservative" },
       { id: "probablemente", text: "Probablemente una parte", type: "Balanced" },
@@ -507,12 +537,25 @@ function renderQuestionState() {
         ${q.title}
       </h2>
 
+      <div class="mt-3 inline-flex items-center gap-2 rounded-full bg-blue-50 border border-blue-200 px-4 py-2">
+        <span class="text-lg">${q.dimensionIcon}</span>
+        <span class="text-sm font-bold text-blue-700">Afecta: ${q.dimension}</span>
+        <span class="text-xs text-blue-500">— ${q.dimensionDescription}</span>
+      </div>
+
       <div class="choice-grid mt-8">
-        ${q.options.map(opt => `
+        ${q.options.map(opt => {
+          const sesgoColor = opt.type === "Conservative" ? "emerald" : opt.type === "Dynamic" ? "amber" : "blue";
+          const sesgoLabel = opt.type === "Conservative" ? "⛔ Conservador" : opt.type === "Dynamic" ? "🚀 Dinámico" : "⚖️ Moderado";
+          return `
           <button class="choice-button" type="button" data-option-id="${opt.id}">
             <span class="block text-base">${opt.text}</span>
+            <span class="mt-2 inline-block rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-bold text-slate-500">
+              ${sesgoLabel}
+            </span>
           </button>
-        `).join("")}
+        `;
+        }).join("")}
       </div>
 
       <button class="secondary-button mt-6" type="button" id="back-button">
@@ -537,28 +580,201 @@ function renderQuestionState() {
 
 function handleQuestionAnswer(questionId, optionId, optionText) {
   appState.answers[questionId] = optionText;
+  // Also store the type for scoring
+  const q = PROFILING_QUESTIONS[appState.currentQuestionIndex];
+  const opt = q.options.find(o => o.id === optionId);
+  appState.answers[questionId + "_type"] = opt ? opt.type : "Balanced";
   appState.currentQuestionIndex++;
 
   if (appState.currentQuestionIndex < PROFILING_QUESTIONS.length) {
     renderQuestionState();
   } else {
-    submitProfiling();
+    renderProfileConfirmation();
   }
 }
 
-// ─── PASO 3: El usuario respondió todo → llamar a los 3 agentes ──────────────────────
+// ─── PASO 2.5: Confirmación del perfil preliminar con sliders ────────────────
+function calcularScorePreliminar() {
+  let horizonte = 0, tolerancia = 0, capacidad = 0;
+  const qMap = {
+    "etapa_vida": "horizonte", "objetivo": "horizonte", "retiro_fondos": "horizonte",
+    "conocimiento": "tolerancia", "experiencia_productos": "tolerancia",
+    "reaccion_caida": "tolerancia", "preferencia_riesgo": "tolerancia",
+    "estabilidad_ingresos": "capacidad", "porcentaje_ahorros": "capacidad", "emergencia": "capacidad"
+  };
+  
+  for (const [qId, dim] of Object.entries(qMap)) {
+    const tipo = appState.answers[qId + "_type"] || "Balanced";
+    const pts = tipo === "Conservative" ? -10 : tipo === "Dynamic" ? 10 : 0;
+    if (dim === "horizonte") horizonte += pts;
+    else if (dim === "tolerancia") tolerancia += pts;
+    else capacidad += pts;
+  }
+  
+  return { horizonte, tolerancia, capacidad };
+}
+
+function getPerfilLabel(totalScore) {
+  if (totalScore <= -20) return { label: "Conservador", color: "#16a34a", emoji: "🛡️" };
+  if (totalScore > 20) return { label: "Agresivo", color: "#dc2626", emoji: "🚀" };
+  return { label: "Moderado", color: "#2563eb", emoji: "⚖️" };
+}
+
+function renderProfileConfirmation() {
+  setState("profile-confirm");
+  const scores = calcularScorePreliminar();
+  
+  // Normalize scores to 0-100 range for sliders (raw range is -30 to +30 per dimension)
+  const toSlider = (val, maxAbs) => Math.round(((val + maxAbs) / (2 * maxAbs)) * 100);
+  
+  const hVal = toSlider(scores.horizonte, 30);
+  const tVal = toSlider(scores.tolerancia, 40);
+  const cVal = toSlider(scores.capacidad, 30);
+  
+  const totalScore = scores.horizonte + scores.tolerancia + scores.capacidad;
+  const perfil = getPerfilLabel(totalScore);
+
+  getPanel().innerHTML = `
+    <div class="view">
+      <span class="eyebrow">
+        <span class="h-2.5 w-2.5 rounded-full bg-emerald-500"></span>
+        Confirmación del Perfil Preliminar
+      </span>
+
+      <h2 class="mt-6 text-3xl font-black leading-tight tracking-normal text-slate-950 md:text-4xl">
+        Tu perfil preliminar: <span id="perfil-label" style="color:${perfil.color}">${perfil.emoji} ${perfil.label}</span>
+      </h2>
+      <p class="mt-2 text-base text-slate-500">
+        Basado en tus respuestas, hemos calculado este perfil. Puedes ajustar los parámetros con los sliders antes de confirmar.
+      </p>
+
+      <div class="glass-card mt-6 p-6 shadow-[0_20px_50px_rgba(0,0,0,0.05)]">
+        <div class="space-y-6">
+          <!-- Slider 1: Horizonte -->
+          <div>
+            <div class="flex items-center justify-between mb-2">
+              <label class="text-sm font-bold text-slate-700">🕐 Horizonte Temporal</label>
+              <span id="horizonte-val" class="text-sm font-black text-blue-600">${hVal}%</span>
+            </div>
+            <div class="flex items-center gap-3">
+              <span class="text-xs text-slate-400 w-14">Corto</span>
+              <input type="range" id="slider-horizonte" min="0" max="100" value="${hVal}" 
+                class="w-full h-2 bg-slate-200 rounded-full appearance-none cursor-pointer accent-blue-600">
+              <span class="text-xs text-slate-400 w-14 text-right">Largo</span>
+            </div>
+          </div>
+
+          <!-- Slider 2: Tolerancia -->
+          <div>
+            <div class="flex items-center justify-between mb-2">
+              <label class="text-sm font-bold text-slate-700">📊 Tolerancia al Riesgo</label>
+              <span id="tolerancia-val" class="text-sm font-black text-blue-600">${tVal}%</span>
+            </div>
+            <div class="flex items-center gap-3">
+              <span class="text-xs text-slate-400 w-14">Bajo</span>
+              <input type="range" id="slider-tolerancia" min="0" max="100" value="${tVal}" 
+                class="w-full h-2 bg-slate-200 rounded-full appearance-none cursor-pointer accent-blue-600">
+              <span class="text-xs text-slate-400 w-14 text-right">Alto</span>
+            </div>
+          </div>
+
+          <!-- Slider 3: Capacidad -->
+          <div>
+            <div class="flex items-center justify-between mb-2">
+              <label class="text-sm font-bold text-slate-700">💰 Capacidad Financiera</label>
+              <span id="capacidad-val" class="text-sm font-black text-blue-600">${cVal}%</span>
+            </div>
+            <div class="flex items-center gap-3">
+              <span class="text-xs text-slate-400 w-14">Baja</span>
+              <input type="range" id="slider-capacidad" min="0" max="100" value="${cVal}" 
+                class="w-full h-2 bg-slate-200 rounded-full appearance-none cursor-pointer accent-blue-600">
+              <span class="text-xs text-slate-400 w-14 text-right">Alta</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Score visual -->
+        <div id="score-display" class="mt-6 rounded-2xl bg-slate-50 p-4 text-center">
+          <p class="text-xs font-bold uppercase text-slate-400 tracking-wider">Score Total</p>
+          <p id="score-number" class="text-4xl font-black" style="color:${perfil.color}">${totalScore}</p>
+        </div>
+      </div>
+
+      <div class="mt-6 flex flex-col gap-3 sm:flex-row">
+        <button class="primary-button" type="button" id="confirm-profile-button">
+          Confirmar perfil y generar propuesta →
+        </button>
+        <button class="secondary-button" type="button" id="back-to-questions-button">
+          ← Volver a las preguntas
+        </button>
+      </div>
+    </div>
+  `;
+
+  // Setup slider event listeners
+  const sliders = ["horizonte", "tolerancia", "capacidad"];
+  sliders.forEach(name => {
+    const slider = document.getElementById(`slider-${name}`);
+    slider.addEventListener("input", () => {
+      document.getElementById(`${name}-val`).textContent = `${slider.value}%`;
+      updatePerfilFromSliders();
+    });
+  });
+
+  document.getElementById("confirm-profile-button").addEventListener("click", () => {
+    // Store slider adjustments
+    appState.sliderAdjustments = {
+      horizonte: parseInt(document.getElementById("slider-horizonte").value),
+      tolerancia: parseInt(document.getElementById("slider-tolerancia").value),
+      capacidad: parseInt(document.getElementById("slider-capacidad").value),
+    };
+    submitProfiling();
+  });
+  
+  document.getElementById("back-to-questions-button").addEventListener("click", () => {
+    appState.currentQuestionIndex = PROFILING_QUESTIONS.length - 1;
+    renderQuestionState();
+  });
+}
+
+function updatePerfilFromSliders() {
+  const h = parseInt(document.getElementById("slider-horizonte").value);
+  const t = parseInt(document.getElementById("slider-tolerancia").value);
+  const c = parseInt(document.getElementById("slider-capacidad").value);
+  
+  // Convert back from 0-100 to raw score
+  const hScore = Math.round(((h / 100) * 60) - 30);
+  const tScore = Math.round(((t / 100) * 80) - 40);
+  const cScore = Math.round(((c / 100) * 60) - 30);
+  const total = hScore + tScore + cScore;
+  
+  const perfil = getPerfilLabel(total);
+  document.getElementById("perfil-label").innerHTML = `${perfil.emoji} ${perfil.label}`;
+  document.getElementById("perfil-label").style.color = perfil.color;
+  document.getElementById("score-number").textContent = total;
+  document.getElementById("score-number").style.color = perfil.color;
+}
+
+// ─── PASO 3: El usuario confirmó → llamar a los 3 agentes ──────────────────────
 async function submitProfiling() {
   // Iniciar loader con mensajes dinámicos
   renderDynamicLoaderState();
 
   try {
+    const payload = {
+      goalText: appState.goalText,
+      answers: appState.answers,
+    };
+    
+    // Add slider adjustments if they exist
+    if (appState.sliderAdjustments) {
+      payload.sliderAdjustments = appState.sliderAdjustments;
+    }
+
     const response = await fetch("/api/analizar", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        goalText: appState.goalText,
-        answers: appState.answers,
-      }),
+      body: JSON.stringify(payload),
     });
 
     // Detener el loader dinámico

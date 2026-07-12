@@ -161,6 +161,10 @@ def api_analizar():
     data = request.json
     goal_text = data.get('goalText', '')
     answers = data.get('answers', {})
+    slider_adjustments = data.get('sliderAdjustments')
+    
+    if slider_adjustments:
+        answers['AJUSTES_MANUALES_DEL_USUARIO'] = slider_adjustments
 
     try:
         # Ejecutamos los 3 agentes en cadena para obtener el JSON
@@ -280,8 +284,8 @@ def api_resolver_propuesta(id_propuesta):
     accion = data.get("accion", "")
     nota = data.get("nota", "")
     
-    if accion not in ["aprobar", "rechazar"]:
-        return jsonify({"error": "Acción inválida. Use 'aprobar' o 'rechazar'"}), 400
+    if accion not in ["aprobar", "rechazar", "editar_y_aprobar"]:
+        return jsonify({"error": "Acción inválida. Use 'aprobar', 'rechazar' o 'editar_y_aprobar'"}), 400
     
     # CORRECCIÓN: Asegurarnos de que modificamos el objeto original en db_propuestas
     propuesta = db_propuestas[id_propuesta]
@@ -292,6 +296,15 @@ def api_resolver_propuesta(id_propuesta):
         propuesta["estado"] = "Aprobada"
         propuesta["estado_revision"] = "Aprobada"  # CRÍTICO: Para el cliente
         logger.info(f"✅ Propuesta {id_propuesta} APROBADA - estado_revision={propuesta['estado_revision']}")
+    elif accion == "editar_y_aprobar":
+        propuesta_editada = data.get("propuesta_editada", {})
+        if propuesta_editada and "asignacion" in propuesta_editada:
+            propuesta["detalles"]["asignacion"] = propuesta_editada["asignacion"]
+        
+        propuesta["estado_interno"] = "aprobada"
+        propuesta["estado"] = "Aprobada (Editada)"
+        propuesta["estado_revision"] = "Aprobada"
+        logger.info(f"✏️✅ Propuesta {id_propuesta} EDITADA Y APROBADA - estado_revision={propuesta['estado_revision']}")
     else:
         propuesta["estado_interno"] = "rechazada"
         propuesta["estado"] = "Rechazada"
