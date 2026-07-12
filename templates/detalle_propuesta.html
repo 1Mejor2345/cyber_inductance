@@ -138,10 +138,13 @@
       <!-- Action Buttons -->
       <div class="action-bar">
         <button type="button" class="btn-approve" id="btn-aprobar">
-          ✅ Aprobar Propuesta
+          ✅ Aprobar Original
+        </button>
+        <button type="button" class="btn-edit" id="btn-editar" style="background:#f59e0b; color:white; border-radius:12px; padding:12px 24px; font-weight:700; border:none; cursor:pointer;">
+          ✏️ Editar y Aprobar
         </button>
         <button type="button" class="btn-reject" id="btn-rechazar">
-          ❌ Rechazar / Editar
+          ❌ Rechazar
         </button>
       </div>
 
@@ -254,6 +257,62 @@
             <button type="button" class="modal-btn-cancel" data-close-modal="modal-rechazar">Cancelar</button>
             <button type="submit" class="modal-btn-confirm modal-btn-confirm--reject">
               Registrar Rechazo
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!-- MODAL: EDITAR Y APROBAR PROPUESTA                           -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <div id="modal-editar" class="modal-overlay">
+      <div class="modal-box modal-box--edit" style="max-width: 600px;">
+        <div class="modal-box__header">
+          <div>
+            <div class="modal-box__header-icon">✏️</div>
+            <div class="modal-box__title">Editar y Aprobar Propuesta</div>
+          </div>
+          <button class="modal-box__close" data-close-modal="modal-editar">✕</button>
+        </div>
+
+        <form id="form-editar">
+          <div class="modal-box__body">
+            <div class="modal-info-row">
+              <span class="modal-info-row__label">Propuesta</span>
+              <span class="modal-info-row__value">#{{ propuesta.id }}</span>
+            </div>
+            
+            <div style="margin-top: 1.5rem; margin-bottom: 1rem; font-weight: bold; color: #1e293b;">
+              Modificar Distribución de Activos:
+            </div>
+            
+            <div id="edit-assets-container" style="display: flex; flex-direction: column; gap: 0.75rem;">
+              <!-- Llenado dinámicamente por JS -->
+            </div>
+            
+            <div style="margin-top: 1rem; padding: 1rem; background: #f8fafc; border-radius: 8px; text-align: right; font-weight: bold; border: 1px solid #e2e8f0;">
+              Total: <span id="edit-total-percent" style="color: #10b981;">100%</span>
+            </div>
+
+            <textarea
+              id="nota-edicion"
+              class="modal-textarea"
+              style="margin-top: 1.5rem;"
+              placeholder="Justificación de los cambios realizados obligatoria (mínimo 20 caracteres)..."
+              rows="3"
+              required
+              minlength="20"
+            ></textarea>
+            <div id="char-count-edicion" class="modal-char-count modal-char-count--error">
+              0/20 caracteres mínimo
+            </div>
+          </div>
+
+          <div class="modal-box__footer">
+            <button type="button" class="modal-btn-cancel" data-close-modal="modal-editar">Cancelar</button>
+            <button type="submit" class="modal-btn-confirm" style="background:#f59e0b;" id="btn-confirm-edit" disabled>
+              Aprobar con Cambios
             </button>
           </div>
         </form>

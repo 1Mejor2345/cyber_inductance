@@ -1,6 +1,7 @@
 import os
 import uuid
 import hashlib
+import logging
 from datetime import datetime
 from flask import Flask, render_template, request, jsonify, redirect, url_for, session
 from dotenv import load_dotenv
@@ -10,6 +11,10 @@ from agents.crew import run_crew_completo, registrar_auditoria
 
 load_dotenv()
 
+# Configurar logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "super_secreta_hackathon_2026")
 
@@ -17,6 +22,11 @@ app.secret_key = os.getenv("FLASK_SECRET_KEY", "super_secreta_hackathon_2026")
 # BASE DE DATOS SIMULADA EN MEMORIA
 # ═══════════════════════════════════════════════════════════════════════════════
 db_propuestas = {}
+
+# COLA FIFO DE PROPUESTAS PENDIENTES (MAX 5)
+# Lista que mantiene orden de llegada (First In, First Out)
+propuestas_pendientes = []
+MAX_COLA = 5
 
 # Usuarios de demo para el login del asesor
 USUARIOS_DEMO = {
@@ -29,6 +39,15 @@ USUARIOS_DEMO = {
         "password": "asesor123",
         "nombre": "Carlos Méndez",
         "cargo": "Asesor Senior de Inversiones",
+    },
+}
+
+# Usuarios de demo para el login del CLIENTE
+CLIENTES_DEMO = {
+    "cliente_demo": {
+        "password": "1234",
+        "nombre": "Cliente Demo",
+        "email": "cliente@demo.com",
     },
 }
 
@@ -99,12 +118,53 @@ def index():
     return render_template('index.html')
 
 
+@app.route('/api/login_cliente', methods=['POST'])
+def api_login_cliente():
+    """
+    Endpoint de autenticación para el cliente final.
+    
+    Valida credenciales de demo y devuelve éxito o error.
+    """
+    data = request.json
+    username = data.get('username', '').strip()
+    password = data.get('password', '').strip()
+    
+    # Validación básica
+    if not username or not password:
+        return jsonify({
+            "success": False,
+            "error": "Usuario y contraseña son requeridos"
+        }), 400
+    
+    # Verificar credenciales
+    if username in CLIENTES_DEMO:
+        cliente = CLIENTES_DEMO[username]
+        if cliente["password"] == password:
+            # Login exitoso
+            return jsonify({
+                "success": True,
+                "nombre": cliente["nombre"],
+                "email": cliente.get("email", ""),
+                "mensaje": "Inicio de sesión exitoso"
+            }), 200
+    
+    # Credenciales incorrectas
+    return jsonify({
+        "success": False,
+        "error": "Usuario o contraseña incorrectos"
+    }), 401
+
+
 @app.route('/api/analizar', methods=['POST'])
 def api_analizar():
     """Ejecuta los 3 agentes IA en cadena y guarda la propuesta."""
     data = request.json
     goal_text = data.get('goalText', '')
     answers = data.get('answers', {})
+    slider_adjustments = data.get('sliderAdjustments')
+    
+    if slider_adjustments:
+        answers['AJUSTES_MANUALES_DEL_USUARIO'] = slider_adjustments
 
     try:
         # Ejecutamos los 3 agentes en cadena para obtener el JSON
@@ -115,8 +175,8 @@ def api_analizar():
         db_propuestas[id_propuesta] = {
             "id": id_propuesta,
             "perfil": resultado_json.get('perfil', 'Desconocido'),
-            "estado": "Pendiente",
-            "estado_interno": "pendiente",
+            "estado": "Generada",
+            "estado_interno": "generada",  # Estado inicial antes de enviar
             "detalles": resultado_json,
             "goal": goal_text,
             "fecha_creacion": datetime.now().isoformat(),
@@ -131,6 +191,215 @@ def api_analizar():
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/enviar_propuesta', methods=['POST'])
+def api_enviar_propuesta():
+    """
+    Endpoint para enviar una propuesta a la cola de asesores.
+    
+    VALIDACIÓN ESTRICTA: Máximo 5 propuestas en cola.
+    Si está llena, devuelve HTTP 429 (Too Many Requests).
+    
+    ACTUALIZACIÓN: Vincula propuesta al usuario actual.
+    """
+    data = request.json
+    id_propuesta = data.get('id_propuesta', '')
+    usuario_cliente = data.get('usuario', 'cliente_demo')  # Usuario actual
+    
+    if not id_propuesta or id_propuesta not in db_propuestas:
+        return jsonify({"error": "Propuesta no encontrada"}), 404
+    
+    # VALIDACIÓN CRÍTICA: Verificar límite de cola
+    if len(propuestas_pendientes) >= MAX_COLA:
+        return jsonify({
+            "error": "La cola de asesores está llena (Máx 5). Intente en unos minutos.",
+            "cola_llena": True,
+            "posiciones_disponibles": 0
+        }), 429
+    
+    propuesta = db_propuestas[id_propuesta]
+    
+    # Verificar que no esté ya en cola
+    if id_propuesta in propuestas_pendientes:
+        return jsonify({"error": "Esta propuesta ya está en la cola"}), 400
+    
+    # Agregar al FINAL de la cola (FIFO)
+    propuestas_pendientes.append(id_propuesta)
+    
+    # Actualizar estado y vincular al usuario
+    propuesta["estado_interno"] = "pendiente"
+    propuesta["estado"] = "Pendiente"
+    propuesta["estado_revision"] = "Pendiente"  # NUEVO: Estado específico para cliente
+    propuesta["usuario_cliente"] = usuario_cliente  # NUEVO: Vinculación
+    propuesta["fecha_envio"] = datetime.now().isoformat()
+    propuesta["posicion_cola"] = len(propuestas_pendientes)
+    
+    return jsonify({
+        "ok": True,
+        "mensaje": "Propuesta enviada a revisión exitosamente",
+        "id": id_propuesta,
+        "posicion_en_cola": len(propuestas_pendientes),
+        "total_en_cola": len(propuestas_pendientes)
+    }), 200
+
+
+@app.route('/api/propuestas', methods=['GET'])
+def api_obtener_propuestas_cola():
+    """
+    Devuelve la lista de propuestas en cola ORDENADAS por llegada (FIFO).
+    Primera en entrar = Primera en salir.
+    """
+    propuestas_ordenadas = []
+    
+    for idx, id_prop in enumerate(propuestas_pendientes):
+        if id_prop in db_propuestas:
+            prop = db_propuestas[id_prop]
+            propuesta_dict = propuesta_a_dict_asesor(id_prop, prop)
+            propuesta_dict["posicion_cola"] = idx + 1  # 1-indexed para mostrar
+            propuestas_ordenadas.append(propuesta_dict)
+    
+    return jsonify({
+        "propuestas": propuestas_ordenadas,
+        "total": len(propuestas_ordenadas),
+        "capacidad_maxima": MAX_COLA,
+        "espacios_disponibles": MAX_COLA - len(propuestas_ordenadas)
+    })
+
+
+@app.route('/api/resolver_propuesta/<id_propuesta>', methods=['POST'])
+def api_resolver_propuesta(id_propuesta):
+    """
+    Resuelve (aprueba o rechaza) una propuesta y la ELIMINA de la cola.
+    
+    NUEVO: NO elimina de db_propuestas, solo actualiza estado_revision.
+    El cliente puede ver el historial completo.
+    
+    Acción: "aprobar" | "rechazar"
+    """
+    if id_propuesta not in db_propuestas:
+        return jsonify({"error": "Propuesta no encontrada"}), 404
+    
+    data = request.json
+    accion = data.get("accion", "")
+    nota = data.get("nota", "")
+    
+    if accion not in ["aprobar", "rechazar", "editar_y_aprobar"]:
+        return jsonify({"error": "Acción inválida. Use 'aprobar', 'rechazar' o 'editar_y_aprobar'"}), 400
+    
+    # CORRECCIÓN: Asegurarnos de que modificamos el objeto original en db_propuestas
+    propuesta = db_propuestas[id_propuesta]
+    
+    # Actualizar estado
+    if accion == "aprobar":
+        propuesta["estado_interno"] = "aprobada"
+        propuesta["estado"] = "Aprobada"
+        propuesta["estado_revision"] = "Aprobada"  # CRÍTICO: Para el cliente
+        logger.info(f"✅ Propuesta {id_propuesta} APROBADA - estado_revision={propuesta['estado_revision']}")
+    elif accion == "editar_y_aprobar":
+        propuesta_editada = data.get("propuesta_editada", {})
+        if propuesta_editada and "asignacion" in propuesta_editada:
+            # Guardar original antes de sobrescribir
+            propuesta["detalles"]["asignacion_original"] = propuesta["detalles"].get("asignacion", [])
+            propuesta["detalles"]["asignacion"] = propuesta_editada["asignacion"]
+            propuesta["fue_editada"] = True
+        
+        propuesta["estado_interno"] = "aprobada"
+        propuesta["estado"] = "Aprobada (Editada)"
+        propuesta["estado_revision"] = "Aprobada"
+        logger.info(f"✏️✅ Propuesta {id_propuesta} EDITADA Y APROBADA - estado_revision={propuesta['estado_revision']}")
+    else:
+        propuesta["estado_interno"] = "rechazada"
+        propuesta["estado"] = "Rechazada"
+        propuesta["estado_revision"] = "Rechazada"  # CRÍTICO: Para el cliente
+        logger.info(f"❌ Propuesta {id_propuesta} RECHAZADA - estado_revision={propuesta['estado_revision']}")
+    
+    # CRÍTICO: Eliminar de la cola FIFO (pero NO de db_propuestas)
+    if id_propuesta in propuestas_pendientes:
+        propuestas_pendientes.remove(id_propuesta)
+        logger.info(f"🗑️  Propuesta {id_propuesta} eliminada de cola FIFO")
+    
+    # Registrar auditoría simplificada
+    asesor_nombre = session.get("asesor_nombre", "Asesor Standalone")
+    asesor_cargo = session.get("asesor_cargo", "Asesor de Inversiones")
+    
+    firma_data = f"{asesor_nombre}-{accion}-{datetime.now().isoformat()}"
+    firma = generar_firma_digital(firma_data)
+    
+    log_entry = {
+        "fecha": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        "timestamp": datetime.now().isoformat(),
+        "responsable": asesor_nombre,
+        "asesor": asesor_nombre,
+        "cargo": asesor_cargo,
+        "accion": propuesta["estado"],
+        "version_reglas": "v1.0 Q3-2026",
+        "observaciones": nota or f"Propuesta {accion}da desde panel standalone",
+        "nota": nota,
+        "firma_id": firma,
+    }
+    
+    propuesta["log"] = log_entry
+    propuesta.setdefault("historial", []).append(log_entry)
+    propuesta["fecha_resolucion"] = datetime.now().isoformat()
+    
+    # Verificar que se guardó correctamente
+    logger.info(f"📝 Estado final en db_propuestas: {db_propuestas[id_propuesta]['estado_revision']}")
+    
+    return jsonify({
+        "ok": True,
+        "estado": propuesta["estado"],
+        "estado_revision": propuesta["estado_revision"],
+        "mensaje": f"Propuesta {accion}da exitosamente",
+        "cola_restante": len(propuestas_pendientes)
+    })
+
+
+@app.route('/api/mis_propuestas', methods=['GET'])
+def api_mis_propuestas():
+    """
+    Devuelve todas las propuestas del usuario autenticado.
+    
+    Query params:
+    - usuario: nombre del usuario (ej. cliente_demo)
+    
+    Returns: Lista de propuestas con su estado actual.
+    """
+    usuario = request.args.get('usuario', 'cliente_demo')
+    
+    # Filtrar propuestas por usuario
+    propuestas_usuario = []
+    
+    for id_prop, prop in db_propuestas.items():
+        # Solo propuestas de este usuario que fueron enviadas (tienen usuario_cliente)
+        if prop.get("usuario_cliente") == usuario:
+            detalles = prop.get("detalles", {})
+            propuestas_usuario.append({
+                "id": id_prop,
+                "perfil": detalles.get("perfil", "N/A"),
+                "estado_revision": prop.get("estado_revision", "Generada"),
+                "fecha_creacion": prop.get("fecha_creacion", ""),
+                "fecha_envio": prop.get("fecha_envio", ""),
+                "fecha_resolucion": prop.get("fecha_resolucion", ""),
+                "goal": prop.get("goal", ""),
+                "asesor": prop.get("log", {}).get("asesor", "") if prop.get("log") else "",
+                "observaciones": prop.get("log", {}).get("observaciones", "") if prop.get("log") else "",
+                "fue_editada": prop.get("fue_editada", False),
+                "asignacion": detalles.get("asignacion", []),
+                "asignacion_original": detalles.get("asignacion_original", [])
+            })
+    
+    # Ordenar por fecha de creación (más reciente primero)
+    propuestas_usuario.sort(
+        key=lambda x: x["fecha_creacion"] or "",
+        reverse=True
+    )
+    
+    return jsonify({
+        "propuestas": propuestas_usuario,
+        "total": len(propuestas_usuario),
+        "usuario": usuario
+    })
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

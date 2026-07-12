@@ -4,7 +4,9 @@ import time
 import logging
 from datetime import datetime
 from crewai import Agent, Crew, Process, Task, LLM
+from crewai.tools import tool
 from dotenv import load_dotenv
+from agents.market_data import obtener_catalogo_real, buscar_instrumento, validar_propuesta
 
 load_dotenv()
 
@@ -86,15 +88,7 @@ def _ejecutar_con_retry(crew: Crew, max_intentos: int = 5) -> str:
 # CATÁLOGOS Y REGLAS (sin cambios)
 # ============================================================================
 
-CATALOGO_INSTRUMENTOS = """
-Catálogo Oficial de Instrumentos — v1.0
-1. Bonos del Estado AAA (Riesgo Muy Bajo)
-2. ETFs S&P 500 ej. SPY (Riesgo Medio)
-3. Fondos Monetarios Líquidos (Riesgo Muy Bajo)
-4. ETFs Tecnología ej. QQQ (Riesgo Alto)
-5. Bonos Corporativos Grado Inversión (Riesgo Bajo)
-6. Alternativos Líquidos (Riesgo Medio-Bajo)
-"""
+# El catálogo se obtiene dinámicamente de market_data.py usando yfinance
 
 REGLAS_PERFILAMIENTO = """
 Sistema de Perfilamiento v2.0
@@ -105,8 +99,28 @@ Clasificación: <=-20 (Conservador), -19 a 20 (Moderado), >20 (Agresivo)
 """
 
 # ============================================================================
-# AGENTES - Ahora usan función factory para poder recrear con fallback
+# REGLAS ESTRICTAS DE SALIDA JSON - SIN TEXTOS LIBRES NI ALUCINACIONES
 # ============================================================================
+REGLAS_SALIDA_JSON = """
+REGLAS ESTRICTAS DE FORMATO DE SALIDA:
+1. TU RESPUESTA DEBE SER EXCLUSIVAMENTE UN JSON VÁLIDO.
+2. PROHIBIDO usar texto libre, markdown, explicaciones fuera del JSON.
+3. PROHIBIDO inventar puntajes. El score debe calcularse SOLO de las reglas.
+4. PROHIBIDO usar formatos como "Score: -30/50" o texto narrativo.
+5. Los valores numéricos deben ser números reales, no strings.
+6. Si no puedes calcular un valor, usa null, no inventes uno.
+7. La suma de porcentajes de asignación debe ser EXACTAMENTE 100.
+"""
+
+# ============================================================================
+# AGENTES Y HERRAMIENTAS
+# ============================================================================
+
+@tool("Consultar Instrumento Real")
+def tool_consultar_mercado(ticker: str) -> str:
+    """Consulta el precio actual, rendimiento, beta y sector de un instrumento financiero real por su ticker (ej. SPY, QQQ, BND)."""
+    return json.dumps(buscar_instrumento(ticker))
+
 
 def _crear_agentes(modelo: str = None):
     """Crea los 4 agentes con el modelo especificado."""
@@ -114,76 +128,240 @@ def _crear_agentes(modelo: str = None):
     
     perfilador = Agent(
         role="Asesor de Perfilamiento",
-        goal="Clasificar al cliente en un perfil de riesgo usando las reglas del sistema.",
-        backstory=f"Eres transparente. Reglas:\n{REGLAS_PERFILAMIENTO}",
+        goal="Clasificar al cliente en un perfil de riesgo usando las reglas del sistema. RESPONDE SOLO JSON VÁLIDO.",
+        backstory=f"""{REGLAS_SALIDA_JSON}
+
+Eres transparente y riguroso. Reglas:
+{REGLAS_PERFILAMIENTO}
+
+IMPORTANTE: Tu respuesta DEBE ser exclusivamente el JSON solicitado, sin ningún texto adicional.""",
         llm=llm, verbose=True, allow_delegation=False,
         max_rpm=MAX_RPM_SEGURO
     )
     
     analista = Agent(
         role="Analista de Portafolios",
-        goal="Diseñar una distribución de activos coherente usando solo el catálogo.",
-        backstory=f"No prometes rentabilidades. Solo usas este catálogo:\n{CATALOGO_INSTRUMENTOS}",
+        goal="Diseñar una distribución de activos usando exclusivamente los instrumentos reales del catálogo. RESPONDE SOLO JSON VÁLIDO.",
+        backstory=f"""{REGLAS_SALIDA_JSON}
+
+Solo puedes usar los instrumentos del catálogo que se te proporcionará. 
+Es crítico que uses los Tickers correctos.
+
+IMPORTANTE: Tu respuesta DEBE ser exclusivamente el JSON solicitado.""",
+        llm=llm, verbose=True, allow_delegation=False,
+        max_rpm=MAX_RPM_SEGURO
+    )
+    
+    verificador = Agent(
+        role="Verificador de Mercados",
+        goal="Verificar que los instrumentos propuestos existen y obtener sus datos reales para validar la propuesta. RESPONDE SOLO JSON VÁLIDO.",
+        backstory=f"""{REGLAS_SALIDA_JSON}
+        
+Eres el control de calidad antialucinación.
+Revisas la propuesta del analista y consultas el mercado real.
+
+IMPORTANTE: Tu respuesta DEBE ser exclusivamente el JSON solicitado, añadiendo los datos de mercado a la justificación.""",
+        tools=[tool_consultar_mercado],
         llm=llm, verbose=True, allow_delegation=False,
         max_rpm=MAX_RPM_SEGURO
     )
     
     explicador = Agent(
         role="Comunicador Financiero",
-        goal="Traducir la propuesta a lenguaje claro para el cliente y asesor.",
-        backstory="Eres el puente entre la IA y las personas.",
+        goal="Traducir la propuesta a lenguaje claro para el cliente y asesor. RESPONDE SOLO JSON VÁLIDO.",
+        backstory=f"""{REGLAS_SALIDA_JSON}
+
+Eres el puente entre la IA y las personas.
+
+IMPORTANTE: Tu respuesta DEBE ser exclusivamente el JSON solicitado, sin ningún texto adicional.""",
         llm=llm, verbose=True, allow_delegation=False,
         max_rpm=MAX_RPM_SEGURO
     )
     
     revisor = Agent(
         role="Auditor de Cumplimiento",
-        goal="Registrar cada decisión del asesor humano para trazabilidad.",
-        backstory="Tu función es estructurar el log de auditoría.",
+        goal="Registrar cada decisión del asesor humano para trazabilidad. RESPONDE SOLO JSON VÁLIDO.",
+        backstory=f"""{REGLAS_SALIDA_JSON}
+
+Tu función es estructurar el log de auditoría.
+
+IMPORTANTE: Tu respuesta DEBE ser exclusivamente el JSON solicitado, sin ningún texto adicional.""",
         llm=llm, verbose=True, allow_delegation=False,
         max_rpm=MAX_RPM_SEGURO
     )
     
-    return perfilador, analista, explicador, revisor
+    return perfilador, analista, verificador, explicador, revisor
 
 
 def _limpiar_json(texto: str) -> dict:
+    """
+    Extrae y limpia un JSON de la respuesta del modelo.
+    
+    PROHIBIDO devolver texto libre. Si no se puede parsear, devuelve dict vacío.
+    
+    IMPORTANTE: Elimina textos basura como "Score: -30/50" o markdown antes de parsear.
+    """
     import re
-    match = re.search(r'\{.*\}', texto, re.DOTALL)
-    if match:
-        try: return json.loads(match.group(0))
-        except: pass
+    
+    if not texto:
+        return {}
+    
+    # PASO 1: Limpiar texto basura común de Gemini
+    # Eliminar markdown code blocks
+    texto = re.sub(r'```(?:json)?\s*', '', texto)
+    
+    # Eliminar líneas que parecen alucinaciones de métricas
+    # Ejemplos: "Score: -30/50", "Puntaje: 20/50", etc.
+    texto = re.sub(r'(?m)^.*(?:Score|Puntaje|Rating|Calificación)\s*:\s*[-+]?\d+(?:/\d+)?\s*$', '', texto)
+    
+    # Eliminar otros textos narrativos comunes antes del JSON
+    texto = re.sub(r'(?m)^(?:Aquí está|Here is|El resultado es|The result is).*$', '', texto)
+    
+    # PASO 2: Intentar parsear directamente si es JSON puro
+    try:
+        return json.loads(texto.strip())
+    except:
+        pass
+    
+    # PASO 3: Buscar el primer JSON válido en el texto
+    # Patrón mejorado para manejar JSONs anidados
+    patron_json = r'\{(?:[^{}]|(?:\{(?:[^{}]|(?:\{[^{}]*\})*)*\})*)*\}'
+    matches = re.findall(patron_json, texto, re.DOTALL)
+    
+    for match in matches:
+        try:
+            resultado = json.loads(match)
+            if isinstance(resultado, dict):
+                logger.info("✅ JSON extraído exitosamente de la respuesta del modelo")
+                return resultado
+        except:
+            continue
+    
+    logger.error(f"❌ No se pudo extraer JSON válido. Texto recibido: {texto[:300]}...")
     return {}
 
 
 def run_crew_completo(goal_text: str, risk_answers: dict) -> dict:
-    """Ejecuta los 3 agentes en cadena para alimentar el script.js"""
+    """Ejecuta los 3 agentes en cadena para alimentar el script.js
     
-    agente_perfilador, agente_analista, agente_explicador, _ = _crear_agentes()
+    IMPORTANTE: La respuesta debe ser EXCLUSIVAMENTE JSON válido, sin textos libres.
+    Los puntajes se calculan según las reglas: Conservador=-10, Balanceado=0, Dinámico=+10
+    Clasificación: <=-20 (Conservador), -19 a 20 (Moderado), >20 (Agresivo)
+    """
     
+    agente_perfilador, agente_analista, agente_verificador, agente_explicador, _ = _crear_agentes()
+    
+    # Obtener catálogo en vivo de yfinance
+    catalogo_vivo = obtener_catalogo_real()
+    
+    # Tarea 1: Perfilamiento con instrucciones JSON estrictas
     tarea_perfil = Task(
-        description=f"Meta: {goal_text}. Respuestas: {json.dumps(risk_answers)}. Asigna perfil. Responde SOLO con JSON exacto: {{\"perfil\": \"Conservador o Moderado o Agresivo\", \"score\": 20, \"reglas_usadas\": [\"Suma pts...\"], \"explicacion_perfil\": \"...\"}}",
-        expected_output="JSON de perfil",
+        description=f"""Analiza las respuestas del usuario y calcula el perfil de riesgo.
+
+META DEL USUARIO: {goal_text}
+
+RESPUESTAS DEL CUESTIONARIO:
+{json.dumps(risk_answers, ensure_ascii=False, indent=2)}
+
+REGLAS DE PUNTUACIÓN:
+- Respuestas de tipo "Conservative" → -10 puntos cada una
+- Respuestas de tipo "Balanced" → 0 puntos cada una  
+- Respuestas de tipo "Dynamic" → +10 puntos cada una
+
+CLASIFICACIÓN FINAL:
+- Score <= -20 → Perfil "Conservador"
+- Score entre -19 y 20 → Perfil "Moderado"
+- Score > 20 → Perfil "Agresivo"
+
+RESPONDE EXCLUSIVAMENTE CON ESTE JSON (sin markdown, sin texto adicional):
+{{
+  "perfil": "Conservador" | "Moderado" | "Agresivo",
+  "score": <número entero entre -50 y 50>,
+  "reglas_usadas": ["descripción de cada regla aplicada"],
+  "explicacion_perfil": "explicación breve del resultado"
+}}
+""",
+        expected_output="JSON con perfil, score, reglas_usadas y explicacion_perfil",
         agent=agente_perfilador
     )
 
+    # Tarea 2: Propuesta de portafolio con instrucciones JSON estrictas
     tarea_propuesta = Task(
-        description="Crea propuesta de portafolio para el perfil asignado. Responde SOLO con JSON exacto: {\"asignacion\": [{\"nombre\": \"Nombre activo\", \"porcentaje\": 40, \"color\": \"#2563eb\"}], \"riesgo\": \"...\", \"justificacion\": \"...\", \"disclaimer\": \"...\"}. Suma de porcentajes debe ser 100. Colores a usar: #2563eb, #10b981, #38bdf8, #a7f3d0",
-        expected_output="JSON de propuesta",
+        description=f"""Diseña una propuesta de portafolio basada en el perfil calculado.
+
+CATÁLOGOS DE INSTRUMENTOS REALES (Actualizado en tiempo real):
+{catalogo_vivo}
+
+RESPONDE EXCLUSIVAMENTE CON ESTE JSON (sin markdown, sin texto adicional):
+{{
+  "asignacion": [
+    {{"nombre": "Nombre Real del Activo", "ticker": "TICKER", "porcentaje": 40, "color": "#2563eb"}},
+    {{"nombre": "Otro Activo", "ticker": "TICKER", "porcentaje": 35, "color": "#10b981"}}
+  ],
+  "riesgo": "descripción del nivel de riesgo del portafolio",
+  "justificacion_preliminar": "justificación de la asignación"
+}}
+
+REGLAS:
+1. La suma de porcentajes debe ser EXACTAMENTE 100
+2. Usa SOLO los instrumentos y Tickers de la lista proporcionada
+3. INCLUYE SIEMPRE el campo 'ticker' en cada activo
+4. Colores disponibles: #2563eb (azul), #10b981 (verde), #38bdf8 (celeste), #a7f3d0 (verde claro)
+""",
+        expected_output="JSON con asignacion, riesgo y justificacion_preliminar",
         agent=agente_analista,
         context=[tarea_perfil]
     )
 
+    # Tarea 3: Verificación de mercado
+    tarea_verificacion = Task(
+        description=f"""Revisa la asignación propuesta por el analista.
+Usa tu herramienta 'Consultar Instrumento Real' para buscar CADA ticker propuesto y verificar:
+1. Que el instrumento existe en el mercado.
+2. Cuál es su precio actual y rendimiento.
+
+Luego de verificar todos los tickers, genera una justificación final que incorpore estos datos reales.
+
+RESPONDE EXCLUSIVAMENTE CON ESTE JSON:
+{{
+  "justificacion": "justificación FINAL de la asignación mencionando los datos de mercado reales verificados como rendimientos o sectores",
+  "disclaimer": "aviso legal obligatorio indicando que los precios mostrados son referenciales y fluctúan",
+  "mercado_verificado": true
+}}
+""",
+        expected_output="JSON con justificacion final, disclaimer y flag de verificacion",
+        agent=agente_verificador,
+        context=[tarea_propuesta]
+    )
+
+    # Tarea 4: Explicaciones con instrucciones JSON estrictas
     tarea_explicacion = Task(
-        description="Genera explicaciones. Responde SOLO con JSON exacto: {\"explicacion_cliente\": \"...\", \"resumen_asesor\": \"...\", \"alertas\": [\"alerta 1 si la hay\"], \"version_reglas\": \"v1.0\"}",
-        expected_output="JSON de explicaciones",
+        description=f"""Genera explicaciones claras para el cliente y el asesor.
+        
+Toma en cuenta los datos de mercado reales encontrados por el Verificador.
+
+RESPONDE EXCLUSIVAMENTE CON ESTE JSON (sin markdown, sin texto adicional):
+{{
+  "explicacion_cliente": "explicación en lenguaje simple para el cliente",
+  "resumen_asesor": "resumen técnico para el asesor humano (incluyendo rendimiento y sectores de los activos propuestos)",
+  "alertas": ["alerta 1 si existe alguna incoherencia o riesgo en los mercados"],
+  "version_reglas": "v2.0-yfinance"
+}}
+
+REGLAS:
+1. Usa lenguaje claro y simple para el cliente
+2. El resumen del asesor debe ser técnico pero conciso
+3. Solo incluye alertas si hay inconsistencias o riesgos importantes
+4. Si no hay alertas, usa un array vacío: []
+""",
+        expected_output="JSON con explicacion_cliente, resumen_asesor, alertas y version_reglas",
         agent=agente_explicador,
-        context=[tarea_perfil, tarea_propuesta]
+        context=[tarea_perfil, tarea_propuesta, tarea_verificacion]
     )
 
     crew = Crew(
-        agents=[agente_perfilador, agente_analista, agente_explicador], 
-        tasks=[tarea_perfil, tarea_propuesta, tarea_explicacion], 
+        agents=[agente_perfilador, agente_analista, agente_verificador, agente_explicador], 
+        tasks=[tarea_perfil, tarea_propuesta, tarea_verificacion, tarea_explicacion], 
         process=Process.sequential, 
         verbose=True,
         max_rpm=MAX_RPM_SEGURO
@@ -192,16 +370,63 @@ def run_crew_completo(goal_text: str, risk_answers: dict) -> dict:
     # Ejecutar con retry automático para rate limits
     _ejecutar_con_retry(crew)
     
-    # Combinamos las 3 respuestas JSON en un solo mega diccionario
+    # Combinamos las respuestas JSON en un solo mega diccionario
     out1 = _limpiar_json(tarea_perfil.output.raw)
     out2 = _limpiar_json(tarea_propuesta.output.raw)
-    out3 = _limpiar_json(tarea_explicacion.output.raw)
+    out3 = _limpiar_json(tarea_verificacion.output.raw)
+    out4 = _limpiar_json(tarea_explicacion.output.raw)
     
-    return {**out1, **out2, **out3}
+    resultado_final = {**out1, **out2, **out3, **out4}
+    
+    # VALIDACIÓN CRÍTICA: Verificar que NO hay textos basura en los valores
+    resultado_limpio = _validar_y_limpiar_resultado(resultado_final)
+    
+    return resultado_limpio
+
+
+def _validar_y_limpiar_resultado(data: dict) -> dict:
+    """
+    VALIDACIÓN FINAL: Asegura que el resultado NO contiene textos basura.
+    
+    Elimina formatos como "Score: -30/50" de cualquier campo de texto.
+    """
+    import re
+    
+    # Campos que deben ser strings limpios (sin métricas inventadas)
+    campos_texto = [
+        'perfil', 'explicacion_perfil', 'riesgo', 'justificacion', 
+        'disclaimer', 'explicacion_cliente', 'resumen_asesor', 'version_reglas'
+    ]
+    
+    for campo in campos_texto:
+        if campo in data and isinstance(data[campo], str):
+            # Eliminar patrones de "Score: X/Y" o similares
+            data[campo] = re.sub(
+                r'(?:Score|Puntaje|Rating|Calificación)\s*:\s*[-+]?\d+(?:/\d+)?',
+                '',
+                data[campo]
+            ).strip()
+    
+    # Validar que el score sea un número entero válido (no string)
+    if 'score' in data:
+        try:
+            data['score'] = int(data['score'])
+        except (ValueError, TypeError):
+            logger.warning(f"⚠️  Score inválido: {data.get('score')}. Usando None.")
+            data['score'] = None
+    
+    # Validar que los porcentajes sumen 100
+    if 'asignacion' in data and isinstance(data['asignacion'], list):
+        total = sum(a.get('porcentaje', 0) for a in data['asignacion'])
+        if abs(total - 100) > 1:  # Tolerancia de 1%
+            logger.warning(f"⚠️  Los porcentajes suman {total}%, no 100%")
+    
+    logger.info("✅ Resultado validado y limpiado exitosamente")
+    return data
 
 
 def registrar_auditoria(propuesta: dict, accion: str, asesor_nombre: str) -> dict:
-    _, _, _, agente_revisor = _crear_agentes()
+    _, _, _, _, agente_revisor = _crear_agentes()
     
     tarea_auditoria = Task(
         description=f"Asesor: {asesor_nombre} tomó accion: {accion} sobre perfil {propuesta.get('perfil')}. Genera JSON: {{'fecha': '{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}', 'responsable': '{asesor_nombre}', 'accion': '{accion}', 'version_reglas': 'v1.0 Q3-2026', 'observaciones': 'Ninguna'}}",

@@ -198,8 +198,10 @@ function renderDetalleData(p) {
   if (p.estado !== "pendiente") {
     const btnAprobar = el("btn-aprobar");
     const btnRechazar = el("btn-rechazar");
+    const btnEditar = el("btn-editar");
     if (btnAprobar) btnAprobar.disabled = true;
     if (btnRechazar) btnRechazar.disabled = true;
+    if (btnEditar) btnEditar.disabled = true;
   }
 }
 
@@ -283,12 +285,16 @@ function renderHistorial(historial) {
 function setupAcciones(propuesta) {
   const btnAprobar = document.getElementById("btn-aprobar");
   const btnRechazar = document.getElementById("btn-rechazar");
+  const btnEditar = document.getElementById("btn-editar");
 
   if (btnAprobar) {
     btnAprobar.addEventListener("click", () => abrirModal("modal-aprobar"));
   }
   if (btnRechazar) {
     btnRechazar.addEventListener("click", () => abrirModal("modal-rechazar"));
+  }
+  if (btnEditar) {
+    btnEditar.addEventListener("click", () => abrirModalEditar(propuesta));
   }
 
   // Cerrar modales
@@ -325,19 +331,33 @@ function setupAcciones(propuesta) {
       ejecutarRechazo(propuesta.id);
     });
   }
-
-  // Contador de caracteres para rechazo
-  const textareaRechazo = document.getElementById("nota-rechazo");
-  const charCount = document.getElementById("char-count-rechazo");
-  if (textareaRechazo && charCount) {
-    textareaRechazo.addEventListener("input", () => {
-      const len = textareaRechazo.value.length;
-      charCount.textContent = `${len}/20 caracteres mínimo`;
-      charCount.className = len >= 20
-        ? "modal-char-count"
-        : "modal-char-count modal-char-count--error";
+  
+  // Form de edición
+  const formEditar = document.getElementById("form-editar");
+  if (formEditar) {
+    formEditar.addEventListener("submit", (e) => {
+      e.preventDefault();
+      ejecutarEdicion(propuesta.id);
     });
   }
+
+  // Contador de caracteres para rechazo y edición
+  const setupCharCount = (textAreaId, countId) => {
+    const textarea = document.getElementById(textAreaId);
+    const charCount = document.getElementById(countId);
+    if (textarea && charCount) {
+      textarea.addEventListener("input", () => {
+        const len = textarea.value.length;
+        charCount.textContent = `${len}/20 caracteres mínimo`;
+        charCount.className = len >= 20
+          ? "modal-char-count"
+          : "modal-char-count modal-char-count--error";
+      });
+    }
+  };
+  
+  setupCharCount("nota-rechazo", "char-count-rechazo");
+  setupCharCount("nota-edicion", "char-count-edicion");
 }
 
 
@@ -353,10 +373,11 @@ async function ejecutarAprobacion(idPropuesta) {
       btnConfirm.textContent = "Procesando...";
     }
 
-    const res = await fetch("/api/asesor/aprobar", {
+    // REFACTORIZACIÓN: Usar ruta unificada
+    const res = await fetch(`/api/resolver_propuesta/${idPropuesta}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id_propuesta: idPropuesta, nota }),
+      body: JSON.stringify({ accion: "aprobar", nota }),
     });
 
     const data = await res.json();
@@ -397,10 +418,14 @@ async function ejecutarRechazo(idPropuesta) {
       btnConfirm.textContent = "Procesando...";
     }
 
-    const res = await fetch("/api/asesor/rechazar", {
+    // Concatenar motivo con nota para el backend
+    const nota_completa = motivo ? `Motivo: ${motivo}. ${nota}` : nota;
+
+    // REFACTORIZACIÓN: Usar ruta unificada
+    const res = await fetch(`/api/resolver_propuesta/${idPropuesta}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id_propuesta: idPropuesta, motivo, nota }),
+      body: JSON.stringify({ accion: "rechazar", nota: nota_completa }),
     });
 
     const data = await res.json();
@@ -424,8 +449,123 @@ async function ejecutarRechazo(idPropuesta) {
   }
 }
 
+async function ejecutarEdicion(idPropuesta) {
+  const nota = document.getElementById("nota-edicion")?.value || "";
+  const btnConfirm = document.getElementById("btn-confirm-edit");
+  
+  if (nota.length < 20) {
+    showToast("La justificación debe tener al menos 20 caracteres", "error");
+    return;
+  }
+  
+  // Recopilar nueva asignación
+  const inputs = document.querySelectorAll(".edit-asset-input");
+  let total = 0;
+  const asignacion_editada = [];
+  
+  inputs.forEach(input => {
+    const val = parseInt(input.value) || 0;
+    total += val;
+    if (val > 0) {
+      asignacion_editada.push({
+        nombre: input.dataset.name,
+        ticker: input.dataset.ticker || "",
+        porcentaje: val,
+        color: input.dataset.color
+      });
+    }
+  });
+  
+  if (total !== 100) {
+    showToast(`El total debe ser 100%. Actualmente es ${total}%`, "error");
+    return;
+  }
+  
+  try {
+    if (btnConfirm) {
+      btnConfirm.disabled = true;
+      btnConfirm.textContent = "Procesando...";
+    }
+
+    const res = await fetch(`/api/resolver_propuesta/${idPropuesta}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ 
+        accion: "editar_y_aprobar", 
+        nota: nota,
+        propuesta_editada: { asignacion: asignacion_editada }
+      }),
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      throw new Error(data.error || "Error al editar y aprobar");
+    }
+
+    cerrarModal("modal-editar");
+    showToast("✅ Propuesta editada y aprobada exitosamente", "success");
+
+    setTimeout(() => {
+      window.location.reload();
+    }, 1200);
+  } catch (err) {
+    showToast(err.message, "error");
+    if (btnConfirm) {
+      btnConfirm.disabled = false;
+      btnConfirm.textContent = "Aprobar con Cambios";
+    }
+  }
+}
+
 
 // ─── MODALES ────────────────────────────────────────────────────
+
+function abrirModalEditar(propuesta) {
+  const container = document.getElementById("edit-assets-container");
+  const totalPercent = document.getElementById("edit-total-percent");
+  const btnConfirm = document.getElementById("btn-confirm-edit");
+  
+  if (!container || !propuesta.assets) return;
+  
+  // Renderizar inputs de assets
+  container.innerHTML = propuesta.assets.map((a, i) => `
+    <div style="display: flex; align-items: center; justify-content: space-between; background: #fff; border: 1px solid #e2e8f0; padding: 0.5rem 1rem; border-radius: 6px;">
+      <div style="display: flex; align-items: center; gap: 0.5rem;">
+        <span style="width: 12px; height: 12px; border-radius: 50%; background: ${a.color}; display: inline-block;"></span>
+        <span style="font-size: 0.875rem; font-weight: 600; color: #475569;">${escapeHtml(a.name)}</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 0.5rem;">
+        <input type="number" min="0" max="100" value="${a.value}" 
+          class="edit-asset-input" 
+          data-name="${escapeHtml(a.name)}" 
+          data-ticker="${escapeHtml(a.ticker || "")}"
+          data-color="${a.color}"
+          style="width: 60px; padding: 0.25rem; border: 1px solid #cbd5e1; border-radius: 4px; text-align: right; font-weight: bold;">
+        <span style="color: #64748b; font-size: 0.875rem;">%</span>
+      </div>
+    </div>
+  `).join("");
+  
+  // Función para actualizar total
+  const updateTotal = () => {
+    const inputs = document.querySelectorAll(".edit-asset-input");
+    let sum = 0;
+    inputs.forEach(input => sum += (parseInt(input.value) || 0));
+    
+    totalPercent.textContent = `${sum}%`;
+    totalPercent.style.color = sum === 100 ? "#10b981" : "#ef4444";
+    btnConfirm.disabled = sum !== 100;
+  };
+  
+  // Listeners para actualizar en vivo
+  document.querySelectorAll(".edit-asset-input").forEach(input => {
+    input.addEventListener("input", updateTotal);
+  });
+  
+  updateTotal();
+  abrirModal("modal-editar");
+}
 
 function abrirModal(id) {
   const modal = document.getElementById(id);
