@@ -299,7 +299,10 @@ def api_resolver_propuesta(id_propuesta):
     elif accion == "editar_y_aprobar":
         propuesta_editada = data.get("propuesta_editada", {})
         if propuesta_editada and "asignacion" in propuesta_editada:
+            # Guardar original antes de sobrescribir
+            propuesta["detalles"]["asignacion_original"] = propuesta["detalles"].get("asignacion", [])
             propuesta["detalles"]["asignacion"] = propuesta_editada["asignacion"]
+            propuesta["fue_editada"] = True
         
         propuesta["estado_interno"] = "aprobada"
         propuesta["estado"] = "Aprobada (Editada)"
@@ -381,6 +384,9 @@ def api_mis_propuestas():
                 "goal": prop.get("goal", ""),
                 "asesor": prop.get("log", {}).get("asesor", "") if prop.get("log") else "",
                 "observaciones": prop.get("log", {}).get("observaciones", "") if prop.get("log") else "",
+                "fue_editada": prop.get("fue_editada", False),
+                "asignacion": detalles.get("asignacion", []),
+                "asignacion_original": detalles.get("asignacion_original", [])
             })
     
     # Ordenar por fecha de creación (más reciente primero)

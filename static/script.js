@@ -1136,14 +1136,21 @@ function renderEstadoActualizado(propuesta) {
   setState("estado-actualizado");
 
   const esAprobada = propuesta.estado_revision === "Aprobada";
-  const icon = esAprobada ? "✅" : "❌";
-  const color = esAprobada ? "emerald" : "red";
-  const titulo = esAprobada ? "¡Propuesta Aprobada!" : "Propuesta Rechazada";
+  const fueEditada = propuesta.fue_editada;
+  
+  const icon = esAprobada ? (fueEditada ? "✏️" : "✅") : "❌";
+  const color = esAprobada ? (fueEditada ? "amber" : "emerald") : "red";
+  const titulo = esAprobada 
+    ? (fueEditada ? "Propuesta Modificada por Asesor" : "¡Propuesta Aprobada!") 
+    : "Propuesta Rechazada";
+    
   const mensaje = esAprobada 
-    ? "Tu propuesta ha sido revisada y aprobada por nuestro equipo de asesores." 
+    ? (fueEditada 
+        ? "El asesor hizo unos cambios en tu propuesta para optimizarla. Verifica los detalles." 
+        : "Tu propuesta ha sido revisada y aprobada por nuestro equipo de asesores.")
     : "Tu propuesta ha sido revisada. Puedes crear una nueva consulta ajustando tus preferencias.";
 
-  getPanel().innerHTML = `
+  let contentHTML = `
     <div class="view">
       <div class="flex items-center justify-center mb-6 animate-bounce">
         <div class="w-24 h-24 rounded-full bg-${color}-100 flex items-center justify-center shadow-lg">
@@ -1159,9 +1166,78 @@ function renderEstadoActualizado(propuesta) {
         <p class="text-lg text-slate-700 text-center leading-relaxed mb-4">
           ${mensaje}
         </p>
-        
-        <div class="justification-box mt-6" style="background:#${color === "emerald" ? "f0fdf4" : "fef2f2"};">
-          <p class="text-sm font-bold" style="color:#${color === "emerald" ? "16a34a" : "dc2626"};">
+  `;
+
+  if (esAprobada && fueEditada && propuesta.asignacion_original && propuesta.asignacion) {
+    // Generar tabla comparativa
+    let comparativoRows = "";
+    
+    // Crear mapa de activos originales para comparar
+    const activosOriginales = {};
+    propuesta.asignacion_original.forEach(a => {
+      activosOriginales[a.nombre] = a.porcentaje;
+    });
+    
+    // Iterar sobre asignacion final para ver qué quedó y qué cambió
+    propuesta.asignacion.forEach(a => {
+      const origPct = activosOriginales[a.nombre] || 0;
+      const actPct = a.porcentaje;
+      const diff = actPct - origPct;
+      
+      let badge = "";
+      if (diff > 0) badge = `<span class="text-xs font-bold text-emerald-600 bg-emerald-100 px-2 py-0.5 rounded-full">↑ +${diff}%</span>`;
+      else if (diff < 0) badge = `<span class="text-xs font-bold text-red-600 bg-red-100 px-2 py-0.5 rounded-full">↓ ${diff}%</span>`;
+      else badge = `<span class="text-xs font-bold text-slate-400">= Igual</span>`;
+      
+      comparativoRows += `
+        <div class="flex justify-between items-center py-2 border-b border-slate-100 last:border-0">
+          <span class="text-sm font-semibold text-slate-700">${a.nombre}</span>
+          <div class="flex items-center gap-3">
+            <span class="text-sm text-slate-400 line-through">${origPct}%</span>
+            <span class="text-sm font-black text-slate-900">${actPct}%</span>
+            ${badge}
+          </div>
+        </div>
+      `;
+      
+      // Eliminar del mapa original para encontrar eliminados
+      delete activosOriginales[a.nombre];
+    });
+    
+    // Activos que fueron eliminados totalmente por el asesor
+    for (const [nombre, pct] of Object.entries(activosOriginales)) {
+      comparativoRows += `
+        <div class="flex justify-between items-center py-2 border-b border-slate-100 last:border-0 opacity-60">
+          <span class="text-sm font-semibold text-slate-700 line-through">${nombre}</span>
+          <div class="flex items-center gap-3">
+            <span class="text-sm text-slate-400 line-through">${pct}%</span>
+            <span class="text-sm font-black text-slate-900">0%</span>
+            <span class="text-xs font-bold text-red-600 bg-red-100 px-2 py-0.5 rounded-full">Eliminado</span>
+          </div>
+        </div>
+      `;
+    }
+
+    contentHTML += `
+        <div class="justification-box mt-6 mb-6" style="background:#fffbeb; border: 1px solid #fde68a;">
+          <details class="cursor-pointer">
+            <summary class="text-sm font-black uppercase tracking-normal" style="color:#d97706; list-style: none;">
+              <span class="flex items-center justify-between">
+                <span>🔍 Ver cambios realizados por el Asesor</span>
+                <span class="text-lg">▾</span>
+              </span>
+            </summary>
+            <div class="mt-4 pt-3 border-t border-amber-200 space-y-1">
+              ${comparativoRows}
+            </div>
+          </details>
+        </div>
+    `;
+  }
+  
+  contentHTML += `
+        <div class="justification-box mt-6" style="background:#${color === "emerald" || color === "amber" ? "f0fdf4" : "fef2f2"};">
+          <p class="text-sm font-bold" style="color:#${color === "emerald" || color === "amber" ? "16a34a" : "dc2626"};">
             📋 Propuesta ID: <span class="font-mono">${propuesta.id}</span>
           </p>
           <p class="text-sm mt-2 text-slate-600">
@@ -1183,15 +1259,26 @@ function renderEstadoActualizado(propuesta) {
         </div>
 
         <div class="mt-8 flex justify-center gap-3">
-          <button class="primary-button" type="button" id="nueva-consulta-button">
-            Crear nueva consulta
+          ${esAprobada && fueEditada 
+            ? `<button class="primary-button" type="button" id="aceptar-cambios-button" style="background-color: #d97706;">
+                 ✅ Aceptar propuesta modificada
+               </button>` 
+            : ``}
+          <button class="${esAprobada && fueEditada ? 'secondary-button' : 'primary-button'}" type="button" id="nueva-consulta-button">
+            ${esAprobada && fueEditada ? 'Crear otra consulta' : 'Crear nueva consulta'}
           </button>
         </div>
       </div>
     </div>
   `;
 
+  getPanel().innerHTML = contentHTML;
+
   document.getElementById("nueva-consulta-button")?.addEventListener("click", renderIcebreakerState);
+  document.getElementById("aceptar-cambios-button")?.addEventListener("click", () => {
+    showErrorMessage("¡Propuesta aceptada exitosamente! Empezaremos a gestionar tu portafolio.");
+    setTimeout(renderIcebreakerState, 3000);
+  });
 }
 
 function renderExitoEnvioState(data) {
