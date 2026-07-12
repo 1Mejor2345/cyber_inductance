@@ -1,447 +1,414 @@
 import os
-import json
 import uuid
 import hashlib
-from datetime import datetime, timezone
-from functools import wraps
+from datetime import datetime
+from flask import Flask, render_template, request, jsonify, redirect, url_for, session
+from dotenv import load_dotenv
 
-os.environ.setdefault("PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION", "python")
+# Importamos las funciones adaptadas de CrewAI
+from agents.crew import run_crew_completo, registrar_auditoria
 
-from flask import (
-    Flask,
-    jsonify,
-    render_template,
-    request,
-    session,
-    redirect,
-    url_for,
-    abort,
-)
-
-try:
-    from dotenv import load_dotenv
-    load_dotenv = load_dotenv
-except ModuleNotFoundError:
-    load_dotenv = None
-
-try:
-    from flask_cors import CORS
-except ModuleNotFoundError:
-    CORS = None
-
-from agents.crew import run_crew, run_revisor
-
-# ─── CARGA DE VARIABLES DE ENTORNO ──────────────────────────────
-def cargar_env_local():
-    if load_dotenv:
-        load_dotenv()
-        return
-    if not os.path.exists(".env"):
-        return
-    with open(".env", encoding="utf-8") as archivo_env:
-        for linea in archivo_env:
-            linea = linea.strip()
-            if not linea or linea.startswith("#") or "=" not in linea:
-                continue
-            clave, valor = linea.split("=", 1)
-            os.environ.setdefault(clave.strip(), valor.strip())
-
-
-cargar_env_local()
+load_dotenv()
 
 app = Flask(__name__)
-app.secret_key = os.getenv("FLASK_SECRET_KEY", "cyber_inductance_secret_2025")
-if CORS:
-    CORS(app)
+app.secret_key = os.getenv("FLASK_SECRET_KEY", "super_secreta_hackathon_2026")
 
-# ─── CONFIGURACIÓN DEL SISTEMA ──────────────────────────────────
-VERSION_CATALOGO = "v2.0"
-MODELO_IA = "gpt-4o-mini"
+# ═══════════════════════════════════════════════════════════════════════════════
+# BASE DE DATOS SIMULADA EN MEMORIA
+# ═══════════════════════════════════════════════════════════════════════════════
+db_propuestas = {}
 
-ASESORES_AUTORIZADOS = {
+# Usuarios de demo para el login del asesor
+USUARIOS_DEMO = {
     "admin": {
         "password": "admin123",
-        "nombre": "Carlos Méndez",
-        "cargo": "Asesor Financiero Senior",
+        "nombre": "Administrador General",
+        "cargo": "Gerente de Inversiones",
     },
     "asesor": {
         "password": "asesor123",
-        "nombre": "Ana Torres",
-        "cargo": "Analista de Riesgo",
+        "nombre": "Carlos Méndez",
+        "cargo": "Asesor Senior de Inversiones",
     },
 }
 
 
-# ─── BASES DE DATOS EN MEMORIA ──────────────────────────────────
-db_propuestas = {}
-db_auditoria = []
+# ═══════════════════════════════════════════════════════════════════════════════
+# HELPERS
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def generar_firma_digital(data_str: str) -> str:
+    """Genera una firma SHA-256 simulada para auditoría."""
+    return hashlib.sha256(data_str.encode()).hexdigest()[:16].upper()
 
 
-# ─── FUNCIONES UTILITARIAS ──────────────────────────────────────
-def generar_firma(propuesta_json):
-    """Genera un hash SHA-256 del JSON de la propuesta como firma digital."""
-    contenido = json.dumps(propuesta_json, sort_keys=True, ensure_ascii=False)
-    return hashlib.sha256(contenido.encode("utf-8")).hexdigest()[:16]
-
-
-def timestamp_ahora():
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
-def requiere_login_asesor(f):
-    """Decorator para proteger rutas del asesor."""
-    @wraps(f)
-    def decorada(*args, **kwargs):
-        if "asesor_usuario" not in session:
-            return redirect(url_for("login_asesor"))
-        return f(*args, **kwargs)
-    return decorada
-
-
-def propuesta_mock(perfil="Balanceado"):
-    perfiles = {
-        "Conservador": [
-            {"name": "Bonos grado inversión", "value": 55, "color": "#2563eb"},
-            {"name": "Fondos monetarios", "value": 25, "color": "#38bdf8"},
-            {"name": "ETF renta variable global", "value": 15, "color": "#10b981"},
-            {"name": "Alternativos líquidos", "value": 5, "color": "#a7f3d0"},
-        ],
-        "Balanceado": [
-            {"name": "Bonos grado inversión", "value": 40, "color": "#2563eb"},
-            {"name": "ETF renta variable global", "value": 30, "color": "#10b981"},
-            {"name": "Fondos monetarios", "value": 20, "color": "#38bdf8"},
-            {"name": "Alternativos líquidos", "value": 10, "color": "#a7f3d0"},
-        ],
-        "Dinámico": [
-            {"name": "ETF renta variable global", "value": 45, "color": "#10b981"},
-            {"name": "Bonos grado inversión", "value": 25, "color": "#2563eb"},
-            {"name": "Acciones tecnología", "value": 20, "color": "#38bdf8"},
-            {"name": "Fondos monetarios", "value": 10, "color": "#a7f3d0"},
-        ],
-    }
-
+def propuesta_a_dict_asesor(id_prop: str, prop: dict) -> dict:
+    """Convierte una propuesta interna al formato que esperan los JS del asesor."""
+    detalles = prop.get("detalles", {})
     return {
-        "label": "Proyección Histórica del Portafolio",
-        "aiJustification": (
-            "La IA sugiere una composición balanceada entre estabilidad, liquidez y crecimiento "
-            "según el objetivo declarado. Esta propuesta queda pendiente de revisión por un asesor humano."
-        ),
-        "assets": perfiles.get(perfil, perfiles["Balanceado"]),
+        "id": id_prop,
+        "estado": prop.get("estado_interno", "pendiente"),
+        "meta_usuario": prop.get("goal", ""),
+        "goal": prop.get("goal", ""),
+        "perfil_ia": detalles.get("perfil", "N/A"),
+        "score": detalles.get("score"),
+        "fecha_creacion": prop.get("fecha_creacion", ""),
+        "version_reglas": detalles.get("version_reglas", "v1.0"),
+        "modelo_ia": "gemini-3.5-flash",
+        "proyeccion_anual": detalles.get("riesgo", "—"),
+        "aiJustification": detalles.get("justificacion", ""),
+        "resumen_asesor": detalles.get("resumen_asesor", ""),
+        "explicacion_cliente": detalles.get("explicacion_cliente", ""),
+        "disclaimer": detalles.get("disclaimer", ""),
+        "alertas": detalles.get("alertas", []),
+        "reglas_usadas": detalles.get("reglas_usadas", []),
+        "assets": [
+            {
+                "name": a.get("nombre", ""),
+                "value": a.get("porcentaje", 0),
+                "color": a.get("color", "#2563eb"),
+            }
+            for a in detalles.get("asignacion", [])
+        ],
+        # Campos para asesor.html (standalone)
+        "datos": detalles,
+        "log": prop.get("log"),
+        "creado_en": prop.get("fecha_creacion", ""),
     }
 
 
-# ─── SEED DE DATOS DEMO ─────────────────────────────────────────
-def seed_propuestas_demo():
-    """Crea propuestas de ejemplo para demostración del hackathon."""
-    demos = [
-        {
-            "meta_usuario": "Quiero comprar una moto en 6 meses, puedo aportar $200 al mes",
-            "perfil_ia": "Balanceado",
-            "respuesta_perfil": "balanced",
-            "proyeccion_anual": "~6%",
-        },
-        {
-            "meta_usuario": "Necesito un fondo de emergencia de $5,000 en 1 año",
-            "perfil_ia": "Conservador",
-            "respuesta_perfil": "conservative",
-            "proyeccion_anual": "~4%",
-        },
-    ]
+def login_requerido(f):
+    """Decorador para proteger rutas del asesor."""
+    from functools import wraps
 
-    for i, demo in enumerate(demos, 1):
-        id_prop = str(i).zfill(4)
-        portafolio = propuesta_mock(demo["perfil_ia"])
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if "asesor_usuario" not in session:
+            return redirect(url_for("asesor_login"))
+        return f(*args, **kwargs)
 
-        db_propuestas[id_prop] = {
-            "id": id_prop,
-            "goal": demo["meta_usuario"],
-            "perfil_ia": demo["perfil_ia"],
-            "respuestas": demo["respuesta_perfil"],
-            "proyeccion_anual": demo["proyeccion_anual"],
-            "datos": {
-                "asignacion": portafolio["assets"],
-                "justificacion": portafolio["aiJustification"],
-                "explicacion_cliente": "Ejemplo de explicación al cliente.",
-                "resumen_asesor": "Resumen técnico para el asesor.",
-                "alertas": ["Ejemplo de alerta"],
-            },
-            "estado": "pendiente",
-            "fecha_creacion": f"2025-07-11T{10 + i}:{15 + i * 7 % 60:02d}:00Z",
-            "version_reglas": VERSION_CATALOGO,
-            "modelo_ia": MODELO_IA,
-        }
-
-    # Marcar una como aprobada para variedad en la demo
-    db_propuestas["0002"]["estado"] = "aprobada"
-    db_auditoria.append(
-        {
-            "id_propuesta": "0002",
-            "accion": "aprobada",
-            "asesor": "Ana Torres",
-            "cargo": "Analista de Riesgo",
-            "timestamp": "2025-07-11T14:22:00Z",
-            "firma_id": generar_firma(db_propuestas["0002"]),
-            "version_reglas": VERSION_CATALOGO,
-            "nota": "Propuesta revisada. Perfil conservador adecuado para fondo de emergencia.",
-        }
-    )
-
-seed_propuestas_demo()
+    return decorated_function
 
 
-# ═══════════════════════════════════════════════════════════════
-# RUTA PRINCIPAL
-# ═══════════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════════════════
+# RUTAS DEL CLIENTE / INVERSIONISTA
+# ═══════════════════════════════════════════════════════════════════════════════
 
-@app.route("/")
-def home():
-    """Página principal — flujo del cliente."""
-    return render_template("index.html")
+@app.route('/')
+def index():
+    return render_template('index.html')
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# API — FLUJO DEL CLIENTE (Agentes 1, 2 y 3)
-# ─────────────────────────────────────────────────────────────────────────────
-
-@app.route("/api/analizar", methods=["POST"])
-def analizar():
-    """
-    Recibe la meta y el cuestionario de riesgo del cliente.
-    Ejecuta la cadena de 3 agentes y guarda la propuesta resultante.
-    Devuelve el resultado completo con el ID asignado.
-    """
-    datos = request.get_json(silent=True) or {}
-    goal_text = datos.get("goalText", "").strip()
-    answers = datos.get("answers", {})
-
-    if not goal_text:
-        return jsonify({"error": "El campo 'goalText' es obligatorio."}), 400
+@app.route('/api/analizar', methods=['POST'])
+def api_analizar():
+    """Ejecuta los 3 agentes IA en cadena y guarda la propuesta."""
+    data = request.json
+    goal_text = data.get('goalText', '')
+    answers = data.get('answers', {})
 
     try:
-        resultado = run_crew(goal_text, answers)
-    except Exception as exc:
-        return jsonify({
-            "error": "Error al ejecutar los agentes de IA.",
-            "detalle": str(exc),
-        }), 500
+        # Ejecutamos los 3 agentes en cadena para obtener el JSON
+        resultado_json = run_crew_completo(goal_text, answers)
 
-    id_propuesta = str(uuid.uuid4())[:8]
-    db_propuestas[id_propuesta] = {
+        # Guardamos en la "Base de Datos"
+        id_propuesta = str(uuid.uuid4())[:8]
+        db_propuestas[id_propuesta] = {
+            "id": id_propuesta,
+            "perfil": resultado_json.get('perfil', 'Desconocido'),
+            "estado": "Pendiente",
+            "estado_interno": "pendiente",
+            "detalles": resultado_json,
+            "goal": goal_text,
+            "fecha_creacion": datetime.now().isoformat(),
+            "log": None,
+            "historial": [],
+        }
+
+        # Le inyectamos el ID al resultado para que el frontend lo muestre
+        resultado_json["id"] = id_propuesta
+
+        return jsonify(resultado_json)
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# RUTAS DE AUTENTICACIÓN DEL ASESOR
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.route('/asesor/login', methods=['GET', 'POST'])
+def asesor_login():
+    """Página de login para el asesor/gerente."""
+    error = None
+
+    if request.method == 'POST':
+        usuario = request.form.get('usuario', '').strip()
+        password = request.form.get('password', '').strip()
+
+        if usuario in USUARIOS_DEMO and USUARIOS_DEMO[usuario]["password"] == password:
+            session["asesor_usuario"] = usuario
+            session["asesor_nombre"] = USUARIOS_DEMO[usuario]["nombre"]
+            session["asesor_cargo"] = USUARIOS_DEMO[usuario]["cargo"]
+            return redirect(url_for("asesor_dashboard"))
+        else:
+            error = "Usuario o contraseña incorrectos"
+
+    return render_template('login_asesor.html', error=error)
+
+
+@app.route('/asesor/logout')
+def asesor_logout():
+    """Cierra sesión del asesor."""
+    session.pop("asesor_usuario", None)
+    session.pop("asesor_nombre", None)
+    session.pop("asesor_cargo", None)
+    return redirect(url_for("asesor_login"))
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# RUTAS DEL PANEL DEL ASESOR (requieren sesión)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.route('/asesor')
+def panel_asesor_standalone():
+    """asesor.html — Panel standalone con JS inline (no requiere login)."""
+    return render_template('asesor.html')
+
+
+@app.route('/asesor/dashboard')
+@login_requerido
+def asesor_dashboard():
+    """dashboard_asesor.html — Dashboard con login requerido."""
+    return render_template(
+        'dashboard_asesor.html',
+        propuestas=db_propuestas.values(),
+        asesor_nombre=session.get("asesor_nombre", "Asesor"),
+        asesor_cargo=session.get("asesor_cargo", "Asesor de Inversiones"),
+    )
+
+
+@app.route('/asesor/propuesta/<id_propuesta>')
+@login_requerido
+def detalle_propuesta(id_propuesta):
+    """detalle_propuesta.html — Vista detallada de una propuesta."""
+    if id_propuesta not in db_propuestas:
+        return redirect(url_for("asesor_dashboard"))
+
+    prop = db_propuestas[id_propuesta]
+    propuesta_view = {
         "id": id_propuesta,
-        "goal": goal_text,
-        "respuestas": answers,
-        "estado": "pendiente",
-        "datos": resultado,
-        "log": None,
-        "fecha_creacion": timestamp_ahora(),
-        "version_reglas": VERSION_CATALOGO,
-        "modelo_ia": MODELO_IA,
+        "estado": prop.get("estado_interno", "pendiente"),
     }
 
-    return jsonify({"id": id_propuesta, **resultado})
-
-
-# ═══════════════════════════════════════════════════════════════
-# RUTAS DEL ASESOR — VISTAS HTML
-# ═══════════════════════════════════════════════════════════════
-
-@app.route("/asesor/login", methods=["GET", "POST"])
-def login_asesor():
-    if request.method == "GET":
-        if "asesor_usuario" in session:
-            return redirect(url_for("dashboard_asesor"))
-        return render_template("login_asesor.html", error=None)
-
-    usuario = request.form.get("usuario", "").strip()
-    password = request.form.get("password", "").strip()
-
-    asesor = ASESORES_AUTORIZADOS.get(usuario)
-    if not asesor or asesor["password"] != password:
-        return render_template("login_asesor.html", error="Credenciales inválidas")
-
-    session["asesor_usuario"] = usuario
-    session["asesor_nombre"] = asesor["nombre"]
-    session["asesor_cargo"] = asesor["cargo"]
-    return redirect(url_for("dashboard_asesor"))
-
-
-@app.route("/asesor/logout")
-def logout_asesor():
-    session.clear()
-    return redirect(url_for("login_asesor"))
-
-
-@app.route("/asesor/dashboard")
-@requiere_login_asesor
-def dashboard_asesor():
     return render_template(
-        "dashboard_asesor.html",
-        asesor_nombre=session["asesor_nombre"],
-        asesor_cargo=session["asesor_cargo"],
+        'detalle_propuesta.html',
+        propuesta=propuesta_view,
+        asesor_nombre=session.get("asesor_nombre", "Asesor"),
+        asesor_cargo=session.get("asesor_cargo", "Asesor de Inversiones"),
     )
 
 
-@app.route("/asesor/propuesta/<id_propuesta>")
-@requiere_login_asesor
-def vista_detalle_propuesta(id_propuesta):
-    propuesta = db_propuestas.get(id_propuesta)
-    if not propuesta:
-        abort(404)
-    return render_template(
-        "detalle_propuesta.html",
-        propuesta=propuesta,
-        asesor_nombre=session["asesor_nombre"],
-        asesor_cargo=session["asesor_cargo"],
-    )
+# ═══════════════════════════════════════════════════════════════════════════════
+# APIs DEL ASESOR
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@app.route('/api/propuestas')
+def api_propuestas_simple():
+    """API para asesor.html standalone — devuelve array de propuestas."""
+    propuestas_list = []
+    for id_prop, prop in db_propuestas.items():
+        p = propuesta_a_dict_asesor(id_prop, prop)
+        # Mapear estado_interno al formato que espera asesor.html standalone
+        estado_map = {"pendiente": "Pendiente", "aprobada": "Aprobado", "rechazada": "Rechazado"}
+        p["estado"] = estado_map.get(prop.get("estado_interno", "pendiente"), prop.get("estado", "Pendiente"))
+        propuestas_list.append(p)
+
+    return jsonify(propuestas_list)
 
 
-# ═══════════════════════════════════════════════════════════════
-# API DEL ASESOR — JSON (Con Agente 4 Integrado)
-# ═══════════════════════════════════════════════════════════════
+@app.route('/api/asesor/propuestas')
+def api_asesor_propuestas():
+    """API para dashboard_asesor.html — devuelve propuestas con stats y filtro."""
+    filtro_estado = request.args.get('estado', 'todos')
 
-@app.route("/api/asesor/propuestas")
-@requiere_login_asesor
-def api_listar_propuestas():
-    filtro_estado = request.args.get("estado", "todos")
-    propuestas = list(db_propuestas.values())
+    propuestas_list = []
+    stats = {"pendientes": 0, "aprobadas": 0, "rechazadas": 0, "total": 0}
 
-    if filtro_estado != "todos":
-        propuestas = [p for p in propuestas if p.get("estado", "").lower() == filtro_estado.lower()]
+    for id_prop, prop in db_propuestas.items():
+        estado = prop.get("estado_interno", "pendiente")
 
-    propuestas.sort(key=lambda p: p.get("fecha_creacion", ""), reverse=True)
+        # Contar stats
+        stats["total"] += 1
+        if estado == "pendiente":
+            stats["pendientes"] += 1
+        elif estado == "aprobada":
+            stats["aprobadas"] += 1
+        elif estado == "rechazada":
+            stats["rechazadas"] += 1
 
-    total = len(db_propuestas)
-    pendientes = sum(1 for p in db_propuestas.values() if p.get("estado", "").lower() == "pendiente")
-    aprobadas = sum(1 for p in db_propuestas.values() if p.get("estado", "").lower() == "aprobada")
-    rechazadas = sum(1 for p in db_propuestas.values() if p.get("estado", "").lower() == "rechazada")
+        # Filtrar si es necesario
+        if filtro_estado != "todos" and estado != filtro_estado:
+            continue
 
-    return jsonify(
-        {
-            "propuestas": propuestas,
-            "stats": {
-                "total": total,
-                "pendientes": pendientes,
-                "aprobadas": aprobadas,
-                "rechazadas": rechazadas,
-            },
-        }
-    )
+        propuestas_list.append(propuesta_a_dict_asesor(id_prop, prop))
+
+    return jsonify({"propuestas": propuestas_list, "stats": stats})
 
 
-@app.route("/api/asesor/propuesta/<id_propuesta>")
-@requiere_login_asesor
-def api_detalle_propuesta(id_propuesta):
-    propuesta = db_propuestas.get(id_propuesta)
-    if not propuesta:
+@app.route('/api/asesor/propuesta/<id_propuesta>')
+def api_asesor_propuesta_detalle(id_propuesta):
+    """API para detalle_propuesta.html — devuelve detalle de una propuesta."""
+    if id_propuesta not in db_propuestas:
         return jsonify({"error": "Propuesta no encontrada"}), 404
 
-    historial = [
-        log for log in db_auditoria if log["id_propuesta"] == id_propuesta
-    ]
-    return jsonify({"propuesta": propuesta, "historial": historial})
+    prop = db_propuestas[id_propuesta]
+    propuesta_data = propuesta_a_dict_asesor(id_propuesta, prop)
+
+    return jsonify({
+        "propuesta": propuesta_data,
+        "historial": prop.get("historial", []),
+    })
 
 
-@app.route("/api/asesor/aprobar", methods=["POST"])
-@requiere_login_asesor
-def api_aprobar_propuesta():
-    datos = request.get_json(silent=True) or {}
-    id_propuesta = datos.get("id_propuesta")
-    nota = datos.get("nota", "")
-
-    propuesta = db_propuestas.get(id_propuesta)
-    if not propuesta:
+@app.route('/api/asesor/accion/<id_propuesta>', methods=['POST'])
+def api_asesor_accion(id_propuesta):
+    """API para asesor.html standalone — aprobar/rechazar/editar una propuesta."""
+    if id_propuesta not in db_propuestas:
         return jsonify({"error": "Propuesta no encontrada"}), 404
 
-    if propuesta.get("estado") != "pendiente":
-        return jsonify({"error": "Solo se pueden aprobar propuestas pendientes"}), 400
+    data = request.json
+    accion = data.get("accion", "")
+    asesor_nombre = data.get("asesor_nombre", "Asesor")
+    observaciones = data.get("observaciones", "")
 
-    propuesta["estado"] = "aprobada"
-    firma = generar_firma(propuesta)
+    prop = db_propuestas[id_propuesta]
 
-    # Inyección de Agente 4 (Revisor)
-    try:
-        log_ia = run_revisor(
-            propuesta.get("datos", {}),
-            "Aprobada",
-            session["asesor_nombre"],
-            nota
-        )
-    except Exception:
-        log_ia = None
+    # Mapear acción al estado interno
+    estado_map = {
+        "Aprobado": "aprobada",
+        "Rechazado": "rechazada",
+        "Editado y Aprobado": "aprobada",
+    }
+    prop["estado_interno"] = estado_map.get(accion, "pendiente")
+    prop["estado"] = accion
 
-    registro = {
-        "id_propuesta": id_propuesta,
+    # Generar firma digital simulada
+    firma_data = f"{asesor_nombre}-{accion}-{datetime.now().isoformat()}"
+    firma = generar_firma_digital(firma_data)
+
+    # Registrar en historial de auditoría
+    log_entry = {
+        "fecha": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        "timestamp": datetime.now().isoformat(),
+        "responsable": asesor_nombre,
+        "asesor": asesor_nombre,
+        "cargo": "Asesor",
+        "accion": accion,
+        "version_reglas": "v1.0 Q3-2026",
+        "observaciones": observaciones or "Sin observaciones",
+        "nota": observaciones,
+        "firma_id": firma,
+    }
+    prop["log"] = log_entry
+    prop.setdefault("historial", []).append(log_entry)
+
+    return jsonify({"ok": True, "estado": accion, "log": log_entry})
+
+
+@app.route('/api/asesor/aprobar', methods=['POST'])
+def api_asesor_aprobar():
+    """API para detalle_propuesta.html — aprobar propuesta con modal."""
+    data = request.json
+    id_propuesta = data.get("id_propuesta", "")
+    nota = data.get("nota", "")
+
+    if id_propuesta not in db_propuestas:
+        return jsonify({"error": "Propuesta no encontrada"}), 404
+
+    prop = db_propuestas[id_propuesta]
+    if prop.get("estado_interno") != "pendiente":
+        return jsonify({"error": "La propuesta ya fue procesada"}), 400
+
+    asesor_nombre = session.get("asesor_nombre", "Asesor")
+    asesor_cargo = session.get("asesor_cargo", "Asesor de Inversiones")
+
+    # Actualizar estado
+    prop["estado_interno"] = "aprobada"
+    prop["estado"] = "Aprobada"
+
+    # Generar firma digital
+    firma_data = f"{asesor_nombre}-aprobar-{datetime.now().isoformat()}"
+    firma = generar_firma_digital(firma_data)
+
+    # Registrar auditoría
+    log_entry = {
+        "fecha": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        "timestamp": datetime.now().isoformat(),
+        "responsable": asesor_nombre,
+        "asesor": asesor_nombre,
+        "cargo": asesor_cargo,
         "accion": "aprobada",
-        "asesor": session["asesor_nombre"],
-        "cargo": session["asesor_cargo"],
-        "timestamp": timestamp_ahora(),
+        "version_reglas": "v1.0 Q3-2026",
+        "observaciones": nota or "Sin observaciones",
+        "nota": nota,
         "firma_id": firma,
-        "version_reglas": VERSION_CATALOGO,
-        "nota": nota or "Propuesta revisada y aprobada sin observaciones.",
-        "log_ia": log_ia
     }
-    db_auditoria.append(registro)
-    propuesta["log"] = log_ia or registro
+    prop["log"] = log_entry
+    prop.setdefault("historial", []).append(log_entry)
 
-    return jsonify({"status": "ok", "registro": registro})
+    return jsonify({"ok": True, "log": log_entry})
 
 
-@app.route("/api/asesor/rechazar", methods=["POST"])
-@requiere_login_asesor
-def api_rechazar_propuesta():
-    datos = request.get_json(silent=True) or {}
-    id_propuesta = datos.get("id_propuesta")
-    motivo = datos.get("motivo", "")
-    nota = datos.get("nota", "")
+@app.route('/api/asesor/rechazar', methods=['POST'])
+def api_asesor_rechazar():
+    """API para detalle_propuesta.html — rechazar propuesta con modal."""
+    data = request.json
+    id_propuesta = data.get("id_propuesta", "")
+    motivo = data.get("motivo", "")
+    nota = data.get("nota", "")
 
-    propuesta = db_propuestas.get(id_propuesta)
-    if not propuesta:
+    if id_propuesta not in db_propuestas:
         return jsonify({"error": "Propuesta no encontrada"}), 404
 
-    if propuesta.get("estado") != "pendiente":
-        return jsonify({"error": "Solo se pueden rechazar propuestas pendientes"}), 400
+    prop = db_propuestas[id_propuesta]
+    if prop.get("estado_interno") != "pendiente":
+        return jsonify({"error": "La propuesta ya fue procesada"}), 400
 
-    if not nota or len(nota) < 20:
-        return jsonify({"error": "La nota de corrección debe tener al menos 20 caracteres"}), 400
+    if len(nota) < 20:
+        return jsonify({"error": "La nota debe tener al menos 20 caracteres"}), 400
 
-    propuesta["estado"] = "rechazada"
-    firma = generar_firma(propuesta)
+    asesor_nombre = session.get("asesor_nombre", "Asesor")
+    asesor_cargo = session.get("asesor_cargo", "Asesor de Inversiones")
 
-    # Inyección de Agente 4 (Revisor)
-    try:
-        log_ia = run_revisor(
-            propuesta.get("datos", {}),
-            "Rechazada",
-            session["asesor_nombre"],
-            f"[{motivo}] {nota}"
-        )
-    except Exception:
-        log_ia = None
+    # Actualizar estado
+    prop["estado_interno"] = "rechazada"
+    prop["estado"] = "Rechazada"
 
-    registro = {
-        "id_propuesta": id_propuesta,
+    # Generar firma digital
+    firma_data = f"{asesor_nombre}-rechazar-{datetime.now().isoformat()}"
+    firma = generar_firma_digital(firma_data)
+
+    # Registrar auditoría
+    nota_completa = f"Motivo: {motivo}. {nota}" if motivo else nota
+    log_entry = {
+        "fecha": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        "timestamp": datetime.now().isoformat(),
+        "responsable": asesor_nombre,
+        "asesor": asesor_nombre,
+        "cargo": asesor_cargo,
         "accion": "rechazada",
-        "asesor": session["asesor_nombre"],
-        "cargo": session["asesor_cargo"],
-        "timestamp": timestamp_ahora(),
+        "version_reglas": "v1.0 Q3-2026",
+        "observaciones": nota_completa,
+        "nota": nota_completa,
         "firma_id": firma,
-        "version_reglas": VERSION_CATALOGO,
-        "motivo": motivo,
-        "nota": nota,
-        "log_ia": log_ia
     }
-    db_auditoria.append(registro)
-    propuesta["log"] = log_ia or registro
+    prop["log"] = log_entry
+    prop.setdefault("historial", []).append(log_entry)
 
-    return jsonify({"status": "ok", "registro": registro})
-
-
-@app.route("/api/asesor/auditoria")
-@requiere_login_asesor
-def api_log_auditoria():
-    return jsonify({"log": list(reversed(db_auditoria))})
+    return jsonify({"ok": True, "log": log_entry})
 
 
-# ═══════════════════════════════════════════════════════════════
-if __name__ == "__main__":
-    app.run(host="127.0.0.1", port=5000, debug=True)
+# ═══════════════════════════════════════════════════════════════════════════════
+if __name__ == '__main__':
+    app.run(debug=True)
