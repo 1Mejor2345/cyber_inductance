@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Dashboard Asesor — Cyber Inductance</title>
+    <meta name="description" content="Panel principal del asesor financiero. Gestión y auditoría de propuestas generadas por IA." />
+    <link rel="stylesheet" href="/static/styles_asesor.css" />
+  </head>
+  <body data-page="dashboard">
+
+    <!-- ─── NAVBAR ──────────────────────────────────────────────── -->
+    <nav class="admin-navbar">
+      <div class="admin-navbar__left">
+        <div class="admin-navbar__logo-icon">CI</div>
+        <span class="admin-navbar__logo-text">CYBER INDUCTANCE</span>
+        <span class="admin-navbar__badge">
+          <span class="admin-navbar__badge-dot"></span>
+          Consola Activa
+        </span>
+      </div>
+
+      <div class="admin-navbar__right">
+        <div class="admin-navbar__user">
+          <div class="admin-navbar__user-info">
+            <div class="admin-navbar__user-name">{{ asesor_nombre }}</div>
+            <div class="admin-navbar__user-role">{{ asesor_cargo }}</div>
+          </div>
+          <div class="admin-navbar__avatar">
+            {{ asesor_nombre[0] }}
+          </div>
+        </div>
+        <a href="/asesor/logout" class="admin-navbar__logout">
+          ← Cerrar Sesión
+        </a>
+      </div>
+    </nav>
+
+    <!-- ─── CONTENIDO ───────────────────────────────────────────── -->
+    <main class="admin-content">
+
+      <div class="admin-content__header">
+        <h1 class="admin-content__title">Panel de Auditoría</h1>
+        <p class="admin-content__subtitle">
+          Revisión y control humano de propuestas generadas por la IA · Robo-Advisor
+        </p>
+      </div>
+
+      <!-- KPI Cards -->
+      <div class="kpi-grid">
+        <div class="kpi-card kpi-card--pending">
+          <div class="kpi-card__icon">⏳</div>
+          <div class="kpi-card__value" id="kpi-pendientes">—</div>
+          <div class="kpi-card__label">Pendientes</div>
+        </div>
+
+        <div class="kpi-card kpi-card--approved">
+          <div class="kpi-card__icon">✅</div>
+          <div class="kpi-card__value" id="kpi-aprobadas">—</div>
+          <div class="kpi-card__label">Aprobadas</div>
+        </div>
+
+        <div class="kpi-card kpi-card--rejected">
+          <div class="kpi-card__icon">❌</div>
+          <div class="kpi-card__value" id="kpi-rechazadas">—</div>
+          <div class="kpi-card__label">Rechazadas</div>
+        </div>
+
+        <div class="kpi-card kpi-card--info">
+          <div class="kpi-card__icon">📊</div>
+          <div class="kpi-card__value" id="kpi-total">—</div>
+          <div class="kpi-card__label">Total</div>
+        </div>
+      </div>
+
+      <!-- Filter Bar -->
+      <div class="filter-bar">
+        <span class="filter-bar__label">Filtrar por estado:</span>
+        <button class="filter-btn filter-btn--active" data-filtro="todos">Todos</button>
+        <button class="filter-btn" data-filtro="pendiente">🟡 Pendientes</button>
+        <button class="filter-btn" data-filtro="aprobada">🟢 Aprobadas</button>
+        <button class="filter-btn" data-filtro="rechazada">🔴 Rechazadas</button>
+      </div>
+
+      <!-- Proposals Table -->
+      <div class="table-card">
+        <table class="proposals-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Meta del Inversionista</th>
+              <th>Perfil IA</th>
+              <th>Fecha</th>
+              <th>Estado</th>
+              <th>Acción</th>
+            </tr>
+          </thead>
+          <tbody id="proposals-tbody">
+            <tr>
+              <td colspan="6">
+                <div class="table-empty">
+                  <div class="table-empty__icon">⏳</div>
+                  <div class="table-empty__text">Cargando propuestas...</div>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+    </main>
+
+    <script src="/static/script_asesor.js"></script>
+  </body>
+</html>
