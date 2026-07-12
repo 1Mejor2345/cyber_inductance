@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Propuesta #{{ propuesta.id }} — Cyber Inductance</title>
+    <meta name="description" content="Detalle y auditoría de propuesta de inversión generada por IA." />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="/static/styles_asesor.css" />
+  </head>
+  <body data-page="detalle" data-propuesta-id="{{ propuesta.id }}">
+
+    <!-- ─── NAVBAR ──────────────────────────────────────────────── -->
+    <nav class="admin-navbar">
+      <div class="admin-navbar__left">
+        <div class="admin-navbar__logo-icon">CI</div>
+        <span class="admin-navbar__logo-text">CYBER INDUCTANCE</span>
+        <span class="admin-navbar__badge">
+          <span class="admin-navbar__badge-dot"></span>
+          Auditoría
+        </span>
+      </div>
+
+      <div class="admin-navbar__right">
+        <div class="admin-navbar__user">
+          <div class="admin-navbar__user-info">
+            <div class="admin-navbar__user-name">{{ asesor_nombre }}</div>
+            <div class="admin-navbar__user-role">{{ asesor_cargo }}</div>
+          </div>
+          <div class="admin-navbar__avatar">
+            {{ asesor_nombre[0] }}
+          </div>
+        </div>
+        <a href="/asesor/logout" class="admin-navbar__logout">
+          ← Cerrar Sesión
+        </a>
+      </div>
+    </nav>
+
+    <!-- ─── CONTENIDO ───────────────────────────────────────────── -->
+    <main class="admin-content">
+
+      <!-- Header con back button -->
+      <div class="detail-header">
+        <div class="detail-header__left">
+          <a href="/asesor/dashboard" class="btn-back">← Volver al Panel</a>
+          <span class="detail-header__id">Propuesta #{{ propuesta.id }}</span>
+          <span id="det-estado-badge" class="status-badge status-badge--pending">
+            <span class="status-badge__dot"></span>
+            Pendiente
+          </span>
+        </div>
+      </div>
+
+      <!-- 2 Column Grid -->
+      <div class="detail-grid">
+
+        <!-- ─── COLUMNA IZQUIERDA: Contexto del Inversionista ──── -->
+        <div class="detail-card">
+          <div class="detail-card__header">
+            <span class="detail-card__header-icon">👤</span>
+            <span class="detail-card__header-title">Contexto del Inversionista</span>
+          </div>
+          <div class="detail-card__body">
+
+            <div class="detail-field">
+              <div class="detail-field__label">Meta del Usuario</div>
+              <div class="detail-field__value" id="det-meta">—</div>
+            </div>
+
+            <div class="detail-field">
+              <div class="detail-field__label">Perfil Asignado por la IA</div>
+              <div class="detail-field__value detail-field__value--highlight" id="det-perfil">—</div>
+            </div>
+
+            <div class="detail-field">
+              <div class="detail-field__label">Proyección Estimada</div>
+              <div class="detail-field__value" id="det-proyeccion">—</div>
+            </div>
+
+            <div class="detail-field">
+              <div class="detail-field__label">Distribución del Portafolio</div>
+              <div class="detail-chart-shell">
+                <canvas id="portfolio-chart" aria-label="Distribución de activos" role="img"></canvas>
+              </div>
+              <div class="detail-assets" id="det-assets">
+                <!-- Rendered by JS -->
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- ─── COLUMNA DERECHA: Auditoría Técnica de la IA ────── -->
+        <div class="detail-card">
+          <div class="detail-card__header">
+            <span class="detail-card__header-icon">🤖</span>
+            <span class="detail-card__header-title">Auditoría Técnica de la IA</span>
+          </div>
+          <div class="detail-card__body">
+
+            <div class="detail-field">
+              <div class="detail-field__label">Justificación de la IA</div>
+              <div class="detail-justification" id="det-justificacion">—</div>
+            </div>
+
+            <div class="detail-field">
+              <div class="detail-field__label">Versión de Reglas Aplicadas</div>
+              <div class="detail-field__value detail-field__value--mono" id="det-version">—</div>
+            </div>
+
+            <div class="detail-field">
+              <div class="detail-field__label">Modelo de IA Utilizado</div>
+              <div class="detail-field__value detail-field__value--mono" id="det-modelo">—</div>
+            </div>
+
+            <div class="detail-field">
+              <div class="detail-field__label">Fecha de Generación</div>
+              <div class="detail-field__value" id="det-fecha">—</div>
+            </div>
+
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Historial de Auditoría -->
+      <div class="detail-card" style="margin-bottom: 1.5rem;">
+        <div class="detail-card__header">
+          <span class="detail-card__header-icon">📋</span>
+          <span class="detail-card__header-title">Historial de Auditoría</span>
+        </div>
+        <div id="det-historial">
+          <div class="audit-log-empty">Cargando historial...</div>
+        </div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="action-bar">
+        <button type="button" class="btn-approve" id="btn-aprobar">
+          ✅ Aprobar Propuesta
+        </button>
+        <button type="button" class="btn-reject" id="btn-rechazar">
+          ❌ Rechazar / Editar
+        </button>
+      </div>
+
+    </main>
+
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!-- MODAL: APROBAR PROPUESTA                                    -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <div id="modal-aprobar" class="modal-overlay">
+      <div class="modal-box modal-box--approve">
+        <div class="modal-box__header">
+          <div>
+            <div class="modal-box__header-icon">✅</div>
+            <div class="modal-box__title">Confirmar Aprobación</div>
+          </div>
+          <button class="modal-box__close" data-close-modal="modal-aprobar">✕</button>
+        </div>
+
+        <form id="form-aprobar">
+          <div class="modal-box__body">
+            <div class="modal-info-row">
+              <span class="modal-info-row__label">Propuesta</span>
+              <span class="modal-info-row__value">#{{ propuesta.id }}</span>
+            </div>
+            <div class="modal-info-row">
+              <span class="modal-info-row__label">Asesor</span>
+              <span class="modal-info-row__value">{{ asesor_nombre }}</span>
+            </div>
+            <div class="modal-info-row">
+              <span class="modal-info-row__label">Cargo</span>
+              <span class="modal-info-row__value">{{ asesor_cargo }}</span>
+            </div>
+            <div class="modal-info-row">
+              <span class="modal-info-row__label">Firma Digital</span>
+              <span class="modal-info-row__value">SHA-256 (auto)</span>
+            </div>
+
+            <textarea
+              id="nota-aprobacion"
+              class="modal-textarea"
+              placeholder="Nota opcional del asesor (ej: Propuesta revisada, sin observaciones)..."
+              rows="3"
+            ></textarea>
+          </div>
+
+          <div class="modal-box__footer">
+            <button type="button" class="modal-btn-cancel" data-close-modal="modal-aprobar">Cancelar</button>
+            <button type="submit" class="modal-btn-confirm modal-btn-confirm--approve">
+              Confirmar Aprobación
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!-- MODAL: RECHAZAR PROPUESTA                                   -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <div id="modal-rechazar" class="modal-overlay">
+      <div class="modal-box modal-box--reject">
+        <div class="modal-box__header">
+          <div>
+            <div class="modal-box__header-icon">❌</div>
+            <div class="modal-box__title">Rechazar / Solicitar Corrección</div>
+          </div>
+          <button class="modal-box__close" data-close-modal="modal-rechazar">✕</button>
+        </div>
+
+        <form id="form-rechazar">
+          <div class="modal-box__body">
+            <div class="modal-info-row">
+              <span class="modal-info-row__label">Propuesta</span>
+              <span class="modal-info-row__value">#{{ propuesta.id }}</span>
+            </div>
+
+            <div class="modal-reason-group">
+              <div class="modal-reason-group__title">Motivo del Rechazo</div>
+              <label class="modal-reason-option">
+                <input type="radio" name="motivo" value="Perfil incorrecto" checked />
+                Perfil de riesgo incorrecto
+              </label>
+              <label class="modal-reason-option">
+                <input type="radio" name="motivo" value="Meta mal interpretada" />
+                Meta del usuario mal interpretada
+              </label>
+              <label class="modal-reason-option">
+                <input type="radio" name="motivo" value="Distribución inapropiada" />
+                Distribución de activos inapropiada
+              </label>
+              <label class="modal-reason-option">
+                <input type="radio" name="motivo" value="Otro" />
+                Otro motivo (especificar abajo)
+              </label>
+            </div>
+
+            <textarea
+              id="nota-rechazo"
+              class="modal-textarea"
+              placeholder="Nota de corrección obligatoria (mínimo 20 caracteres)..."
+              rows="4"
+              required
+              minlength="20"
+            ></textarea>
+            <div id="char-count-rechazo" class="modal-char-count modal-char-count--error">
+              0/20 caracteres mínimo
+            </div>
+          </div>
+
+          <div class="modal-box__footer">
+            <button type="button" class="modal-btn-cancel" data-close-modal="modal-rechazar">Cancelar</button>
+            <button type="submit" class="modal-btn-confirm modal-btn-confirm--reject">
+              Registrar Rechazo
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <script src="/static/script_asesor.js"></script>
+  </body>
+</html>
