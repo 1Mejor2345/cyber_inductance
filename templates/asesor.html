@@ -439,13 +439,15 @@
     </style>
 
     <script>
-      // ── Cargar y renderizar propuestas ────────────────────────────────────
+      // ── Cargar y renderizar propuestas desde la COLA FIFO ────────────────────────────────────
       async function cargarPropuestas() {
         try {
           const res = await fetch("/api/propuestas");
-          const propuestas = await res.json();
-          renderStats(propuestas);
-          renderCards(propuestas);
+          if (!res.ok) throw new Error("Error al conectar con el servidor");
+          
+          const data = await res.json();
+          renderStats(data);
+          renderCards(data.propuestas || []);
         } catch (e) {
           document.getElementById("cards-grid").innerHTML = `
             <div class="empty-state">
@@ -456,14 +458,34 @@
         }
       }
 
-      function renderStats(propuestas) {
-        document.getElementById("stat-total").textContent = propuestas.length;
-        document.getElementById("stat-pendiente").textContent =
-          propuestas.filter((p) => p.estado === "Pendiente").length;
-        document.getElementById("stat-aprobado").textContent =
-          propuestas.filter((p) => p.estado.includes("Aprobado")).length;
-        document.getElementById("stat-rechazado").textContent =
-          propuestas.filter((p) => p.estado === "Rechazado").length;
+      function renderStats(data) {
+        const propuestas = data.propuestas || [];
+        const total = data.total || 0;
+        const capacidadMaxima = data.capacidad_maxima || 5;
+        const espaciosDisponibles = data.espacios_disponibles || 0;
+        
+        document.getElementById("stat-total").textContent = total;
+        document.getElementById("stat-pendiente").textContent = total; // Todas son pendientes en la cola
+        document.getElementById("stat-aprobado").textContent = 
+          propuestas.filter((p) => p.estado === "aprobada").length;
+        document.getElementById("stat-rechazado").textContent = 
+          propuestas.filter((p) => p.estado === "rechazada").length;
+        
+        // Mostrar capacidad de la cola
+        const statsBar = document.getElementById("stats-bar");
+        const colaCard = document.getElementById("stat-cola");
+        if (!colaCard) {
+          const newCard = document.createElement("div");
+          newCard.className = "stat-card";
+          newCard.id = "stat-cola-card";
+          newCard.innerHTML = `
+            <div class="stat-number" id="stat-cola" style="color:#8b5cf6;">${espaciosDisponibles}</div>
+            <div class="stat-label">Espacios en cola (/${capacidadMaxima})</div>
+          `;
+          statsBar.appendChild(newCard);
+        } else {
+          colaCard.textContent = espaciosDisponibles;
+        }
       }
 
       function renderCards(propuestas) {
@@ -473,8 +495,13 @@
           grid.innerHTML = `
             <div class="empty-state">
               <div class="empty-icon">📭</div>
-              <h3>No hay propuestas aún</h3>
-              <p>Cuando un cliente complete el flujo, la propuesta aparecerá aquí automáticamente.</p>
+              <h3>Cola vacía</h3>
+              <p>No hay propuestas pendientes de revisión. Cuando un cliente envíe una propuesta, aparecerá aquí automáticamente.</p>
+              <div style="margin-top:1.5rem;padding:1rem;background:#f0fdf4;border-radius:1rem;max-width:400px;margin-left:auto;margin-right:auto;">
+                <p style="font-size:0.85rem;color:#166534;">
+                  ✅ Cola disponible: <strong>5/5 posiciones libres</strong>
+                </p>
+              </div>
               <a href="/" style="display:inline-block;margin-top:1.5rem;">
                 <button class="btn btn-primary">Ir a la app del cliente →</button>
               </a>
@@ -486,30 +513,29 @@
           .map((p) => buildCardHTML(p))
           .join("");
 
-        // Montar mini-charts y event listeners
+        // Montar mini-charts
         propuestas.forEach((p) => {
           mountMiniChart(p);
-          mountCardListeners(p);
         });
       }
 
       function statusClass(estado) {
-        if (estado === "Pendiente") return "status-pendiente";
-        if (estado.includes("Aprobado")) return "status-aprobado";
-        if (estado === "Rechazado") return "status-rechazado";
+        if (estado === "pendiente" || estado === "Pendiente") return "status-pendiente";
+        if (estado === "aprobada") return "status-aprobado";
+        if (estado === "rechazada") return "status-rechazado";
         return "status-editado";
       }
 
       function statusIcon(estado) {
-        if (estado === "Pendiente") return "⏳";
-        if (estado.includes("Aprobado")) return "✅";
-        if (estado === "Rechazado") return "❌";
+        if (estado === "pendiente" || estado === "Pendiente") return "⏳";
+        if (estado === "aprobada") return "✅";
+        if (estado === "rechazada") return "❌";
         return "✏️";
       }
 
       function buildCardHTML(p) {
         const d = p.datos || {};
-        const isPendiente = p.estado === "Pendiente";
+        const posicionCola = p.posicion_cola || "—";
 
         // Asset rows mini
         const assetRows = (d.asignacion || [])
@@ -531,72 +557,15 @@
             ? `<div class="alertas-box">⚠ ${d.alertas.join(" · ")}</div>`
             : "";
 
-        // Audit log
-        let auditHTML = "";
-        if (p.log) {
-          const logClass =
-            p.estado === "Rechazado"
-              ? "rechazado"
-              : p.estado.includes("Editado")
-              ? "editado"
-              : "";
-          auditHTML = `
-            <div class="audit-log ${logClass}">
-              <strong>📋 Registro de Auditoría</strong>
-              <div><b>Fecha:</b> ${p.log.fecha}</div>
-              <div><b>Responsable:</b> ${p.log.responsable}</div>
-              <div><b>Acción:</b> ${p.log.accion}</div>
-              <div><b>Versión reglas:</b> ${p.log.version_reglas}</div>
-              ${p.log.observaciones && p.log.observaciones !== "Sin observaciones"
-                ? `<div><b>Observaciones:</b> ${p.log.observaciones}</div>`
-                : ""}
-            </div>`;
-        }
-
-        // Botones de acción (solo si está Pendiente)
-        const accionesHTML = isPendiente
-          ? `<div class="card-actions">
-              <button class="btn btn-success btn-sm" onclick="accionRapida('${p.id}','Aprobado')">
-                ✅ Aprobar
-              </button>
-              <button class="btn btn-warning btn-sm" onclick="toggleEditForm('${p.id}')">
-                ✏️ Editar y aprobar
-              </button>
-              <button class="btn btn-danger btn-sm" onclick="accionRapida('${p.id}','Rechazado')">
-                ❌ Rechazar
-              </button>
-            </div>
-
-            <!-- Formulario de edición — HU3 -->
-            <div class="edit-form" id="edit-form-${p.id}">
-              <label for="nombre-${p.id}">Tu nombre</label>
-              <input id="nombre-${p.id}" type="text" placeholder="Ej. José Luis Paladines" value="Asesor" />
-
-              <label for="obs-${p.id}">Observaciones / Cambios realizados</label>
-              <textarea id="obs-${p.id}" rows="3"
-                placeholder="Describe qué editaste o por qué apruebas con condiciones..."></textarea>
-
-              <div style="display:flex;gap:0.6rem;margin-top:0.75rem;">
-                <button class="btn btn-success btn-sm"
-                  onclick="accionConObservaciones('${p.id}','Editado y Aprobado')">
-                  Confirmar edición y aprobar
-                </button>
-                <button class="btn btn-ghost btn-sm" onclick="toggleEditForm('${p.id}')">
-                  Cancelar
-                </button>
-              </div>
-            </div>`
-          : "";
-
         return `
           <div class="proposal-card" id="card-${p.id}">
             <div class="card-header">
               <div>
-                <div class="card-id">ID: ${p.id}</div>
-                <div class="card-date">${p.creado_en || ""}</div>
+                <div class="card-id">ID: ${p.id} · Posición en Cola: #${posicionCola}</div>
+                <div class="card-date">${formatFecha(p.fecha_creacion)}</div>
               </div>
               <span class="status-badge ${statusClass(p.estado)}">
-                ${statusIcon(p.estado)} ${p.estado}
+                ${statusIcon(p.estado)} Pendiente
               </span>
             </div>
 
@@ -604,13 +573,12 @@
               <!-- Perfil -->
               <div class="perfil-row">
                 <span class="perfil-badge">${d.perfil || "—"}</span>
-                <span class="perfil-score">Score: ${d.score ?? "—"}</span>
               </div>
 
               <!-- Meta del cliente -->
               <div class="info-block">
                 <strong>Meta del cliente</strong>
-                ${p.goal || "—"}
+                ${p.goal || p.meta_usuario || "—"}
               </div>
 
               <!-- Resumen para el asesor (del Agente Explicador) -->
@@ -657,8 +625,22 @@
                   </details>`
                 : ""}
 
-              ${accionesHTML}
-              ${auditHTML}
+              <!-- Botones de acción FIFO -->
+              <div class="card-actions">
+                <button class="btn btn-success btn-sm" onclick="resolverPropuesta('${p.id}', 'aprobar')">
+                  ✅ Aprobar
+                </button>
+                <button class="btn btn-danger btn-sm" onclick="resolverPropuesta('${p.id}', 'rechazar')">
+                  ❌ Rechazar
+                </button>
+              </div>
+
+              <!-- Formulario de nota (opcional) -->
+              <div class="edit-form" id="nota-form-${p.id}">
+                <label for="nota-${p.id}">Nota u observación (opcional)</label>
+                <textarea id="nota-${p.id}" rows="2" 
+                  placeholder="Agrega alguna observación..."></textarea>
+              </div>
             </div>
           </div>`;
       }
@@ -695,55 +677,129 @@
         });
       }
 
-      // ── Listeners de botones ───────────────────────────────────────────────
-      function mountCardListeners(p) {
-        // nada adicional necesario — onclick inline
-      }
-
-      function toggleEditForm(id) {
-        const form = document.getElementById(`edit-form-${id}`);
-        if (form) form.classList.toggle("visible");
-      }
-
-      // Aprobar o Rechazar sin observaciones
-      async function accionRapida(id, accion) {
-        const nombre = prompt(`¿Tu nombre para el registro? (Acción: ${accion})`, "Asesor");
-        if (nombre === null) return; // canceló
-
-        await enviarAccion(id, accion, nombre.trim() || "Asesor", "");
-      }
-
-      // Editar y aprobar con observaciones
-      async function accionConObservaciones(id, accion) {
-        const nombre = document.getElementById(`nombre-${id}`)?.value.trim() || "Asesor";
-        const obs    = document.getElementById(`obs-${id}`)?.value.trim() || "";
-        await enviarAccion(id, accion, nombre, obs);
-      }
-
-      async function enviarAccion(id, accion, asesorNombre, observaciones) {
+      // ── Resolver propuesta (aprobar/rechazar) y eliminar de la cola ───────
+      async function resolverPropuesta(id, accion) {
         const card = document.getElementById(`card-${id}`);
-        if (card) card.style.opacity = "0.5";
+        if (!card) return;
+
+        // Obtener nota opcional
+        const notaElement = document.getElementById(`nota-${id}`);
+        const nota = notaElement ? notaElement.value.trim() : "";
+
+        // Confirmar acción
+        const accionTexto = accion === "aprobar" ? "aprobar" : "rechazar";
+        if (!confirm(`¿Confirmas que deseas ${accionTexto} esta propuesta?`)) {
+          return;
+        }
+
+        // Animación de carga
+        card.style.opacity = "0.5";
+        card.style.pointerEvents = "none";
 
         try {
-          const res = await fetch(`/api/asesor/accion/${id}`, {
+          const res = await fetch(`/api/resolver_propuesta/${id}`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ accion, asesor_nombre: asesorNombre, observaciones }),
+            body: JSON.stringify({ accion, nota }),
           });
 
-          if (!res.ok) throw new Error("Error al guardar la acción");
-          await cargarPropuestas(); // Recarga todo
+          if (!res.ok) {
+            const error = await res.json();
+            throw new Error(error.error || "Error al resolver la propuesta");
+          }
+
+          const data = await res.json();
+
+          // CRÍTICO: Eliminar dinámicamente la card del DOM
+          card.style.transition = "all 400ms ease";
+          card.style.transform = "scale(0.9)";
+          card.style.opacity = "0";
+
+          setTimeout(() => {
+            card.remove();
+            
+            // Destruir chart si existe
+            if (miniCharts[id]) {
+              miniCharts[id].destroy();
+              delete miniCharts[id];
+            }
+
+            // Mostrar toast de éxito
+            mostrarToast(`✅ Propuesta ${accionTexto}da exitosamente`, "success");
+
+            // Recargar stats y verificar si quedó vacía la cola
+            cargarPropuestas();
+          }, 400);
+
         } catch (e) {
-          if (card) card.style.opacity = "1";
+          card.style.opacity = "1";
+          card.style.pointerEvents = "auto";
           alert(`Error: ${e.message}`);
+        }
+      }
+
+      // ── Toast notification ─────────────────────────────────────────────────
+      function mostrarToast(mensaje, tipo = "success") {
+        const existente = document.querySelector(".toast-notification");
+        if (existente) existente.remove();
+
+        const toast = document.createElement("div");
+        toast.className = "toast-notification";
+        toast.style.cssText = `
+          position: fixed;
+          bottom: 2rem;
+          right: 2rem;
+          background: ${tipo === "success" ? "#10b981" : "#dc2626"};
+          color: white;
+          padding: 1rem 1.5rem;
+          border-radius: 1rem;
+          box-shadow: 0 12px 32px rgba(0,0,0,0.2);
+          font-weight: 700;
+          font-size: 0.9rem;
+          z-index: 9999;
+          animation: slideInUp 300ms ease;
+        `;
+        toast.textContent = mensaje;
+        document.body.appendChild(toast);
+
+        setTimeout(() => {
+          toast.style.animation = "slideOutDown 300ms ease";
+          setTimeout(() => toast.remove(), 300);
+        }, 3500);
+      }
+
+      // ── Utilidades ─────────────────────────────────────────────────────────
+      function formatFecha(isoString) {
+        if (!isoString) return "—";
+        try {
+          const date = new Date(isoString);
+          const meses = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
+          const dia = date.getDate();
+          const mes = meses[date.getMonth()];
+          const hora = date.getHours().toString().padStart(2, "0");
+          const min = date.getMinutes().toString().padStart(2, "0");
+          return `${dia} ${mes}, ${hora}:${min}`;
+        } catch {
+          return isoString;
         }
       }
 
       // ── Carga inicial ──────────────────────────────────────────────────────
       cargarPropuestas();
 
-      // Auto-refresh cada 30 segundos
-      setInterval(cargarPropuestas, 30000);
+      // Auto-refresh cada 15 segundos
+      setInterval(cargarPropuestas, 15000);
     </script>
+
+    <style>
+      @keyframes slideInUp {
+        from { transform: translateY(100px); opacity: 0; }
+        to { transform: translateY(0); opacity: 1; }
+      }
+      @keyframes slideOutDown {
+        from { transform: translateY(0); opacity: 1; }
+        to { transform: translateY(100px); opacity: 0; }
+      }
+    </style>
   </body>
 </html>

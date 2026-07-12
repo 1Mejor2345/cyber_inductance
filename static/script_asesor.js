@@ -353,10 +353,11 @@ async function ejecutarAprobacion(idPropuesta) {
       btnConfirm.textContent = "Procesando...";
     }
 
-    const res = await fetch("/api/asesor/aprobar", {
+    // REFACTORIZACIÓN: Usar ruta unificada
+    const res = await fetch(`/api/resolver_propuesta/${idPropuesta}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id_propuesta: idPropuesta, nota }),
+      body: JSON.stringify({ accion: "aprobar", nota }),
     });
 
     const data = await res.json();
@@ -397,10 +398,14 @@ async function ejecutarRechazo(idPropuesta) {
       btnConfirm.textContent = "Procesando...";
     }
 
-    const res = await fetch("/api/asesor/rechazar", {
+    // Concatenar motivo con nota para el backend
+    const nota_completa = motivo ? `Motivo: ${motivo}. ${nota}` : nota;
+
+    // REFACTORIZACIÓN: Usar ruta unificada
+    const res = await fetch(`/api/resolver_propuesta/${idPropuesta}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id_propuesta: idPropuesta, motivo, nota }),
+      body: JSON.stringify({ accion: "rechazar", nota: nota_completa }),
     });
 
     const data = await res.json();

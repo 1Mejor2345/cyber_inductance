@@ -40,6 +40,110 @@
             <p class="mt-6 max-w-md text-lg leading-8 text-slate-600">
               Convierte una meta cotidiana en una propuesta clara, explicable y lista para revisar con un asesor humano.
             </p>
+
+            <!-- Mini Login Box -->
+            <div id="login-box" class="mt-8 rounded-3xl bg-white p-6 shadow-[0_20px_50px_rgba(0,0,0,0.08)] border border-slate-100">
+              <div class="flex items-center gap-3 mb-4">
+                <div class="flex h-10 w-10 items-center justify-center rounded-full bg-blue-100">
+                  <span class="text-xl">🔐</span>
+                </div>
+                <div>
+                  <h3 class="text-lg font-black text-slate-950">Iniciar Sesión</h3>
+                  <p class="text-xs text-slate-500">Accede a tu perfil financiero</p>
+                </div>
+              </div>
+
+              <form id="login-form" class="space-y-3">
+                <div>
+                  <label for="username" class="block text-xs font-bold text-slate-600 mb-1.5">Usuario</label>
+                  <input
+                    type="text"
+                    id="username"
+                    class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-950 outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100"
+                    placeholder="Ingresa tu usuario"
+                    autocomplete="username"
+                  />
+                </div>
+
+                <div>
+                  <label for="password" class="block text-xs font-bold text-slate-600 mb-1.5">Contraseña</label>
+                  <input
+                    type="password"
+                    id="password"
+                    class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-950 outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100"
+                    placeholder="Ingresa tu contraseña"
+                    autocomplete="current-password"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  class="w-full rounded-xl bg-gradient-to-r from-blue-600 to-blue-700 px-5 py-3 text-sm font-black text-white shadow-[0_8px_24px_rgba(37,99,235,0.25)] transition-all hover:shadow-[0_12px_32px_rgba(37,99,235,0.35)] hover:scale-[1.02] active:scale-[0.98]"
+                >
+                  Ingresar →
+                </button>
+
+                <div id="login-error" class="hidden rounded-lg bg-red-50 border border-red-200 p-3 text-xs font-semibold text-red-700">
+                  <span class="mr-1">⚠️</span>
+                  <span id="login-error-message">Error al iniciar sesión</span>
+                </div>
+              </form>
+
+              <!-- Demo Credentials -->
+              <div class="mt-5 rounded-xl bg-slate-50 p-3 border border-slate-100">
+                <p class="text-xs font-bold text-slate-500 mb-1.5">🔑 Credenciales de prueba:</p>
+                <div class="space-y-1 text-xs">
+                  <p class="font-mono font-semibold text-slate-700">
+                    <span class="text-slate-500">Usuario:</span> cliente_demo
+                  </p>
+                  <p class="font-mono font-semibold text-slate-700">
+                    <span class="text-slate-500">Contraseña:</span> 1234
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <!-- User Info (hidden until logged in) -->
+            <div id="user-info" class="hidden mt-8 rounded-3xl bg-gradient-to-br from-emerald-50 to-blue-50 p-6 shadow-[0_20px_50px_rgba(0,0,0,0.08)] border border-emerald-100">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                  <div class="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-500 shadow-lg">
+                    <span class="text-2xl">👤</span>
+                  </div>
+                  <div>
+                    <p class="text-xs font-bold text-emerald-700">Sesión activa</p>
+                    <p id="user-name" class="text-sm font-black text-slate-950">Cliente Demo</p>
+                  </div>
+                </div>
+                <button
+                  id="logout-button"
+                  class="rounded-lg bg-white px-3 py-2 text-xs font-bold text-slate-600 shadow-sm transition-all hover:bg-slate-50 hover:text-slate-900"
+                >
+                  Cerrar sesión
+                </button>
+              </div>
+            </div>
+
+            <!-- Dashboard de Propuestas (hidden until logged in) -->
+            <div id="dashboard-propuestas" class="hidden mt-6">
+              <div class="flex items-center justify-between mb-4">
+                <h3 class="text-lg font-black text-slate-950">Mis Propuestas</h3>
+                <button
+                  id="refresh-dashboard"
+                  class="rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-600 transition-all hover:bg-slate-200"
+                  title="Actualizar"
+                >
+                  ↻
+                </button>
+              </div>
+
+              <div id="propuestas-list" class="space-y-3">
+                <!-- Las propuestas se cargarán dinámicamente aquí -->
+                <div class="flex items-center justify-center py-8 text-sm text-slate-400">
+                  <span>Cargando propuestas...</span>
+                </div>
+              </div>
+            </div>
           </div>
 
           <div class="lottie-stage" aria-label="Animacion del agente inversor">
@@ -67,13 +171,28 @@
 
       <section class="interaction-panel">
         <div class="absolute right-8 top-8 hidden items-center gap-3 md:flex">
-          <a href="/asesor"
-             style="font-size:0.8rem;font-weight:800;color:#2563eb;text-decoration:none;background:#eff6ff;padding:0.5rem 1rem;border-radius:999px;box-shadow:0 4px 14px rgba(37,99,235,0.12);">
-            🛡️ Panel Asesor
-          </a>
           <div class="flex items-center gap-3 rounded-full bg-slate-50 px-5 py-3 text-sm font-bold text-slate-500 shadow-soft">
             <span class="h-3 w-3 rounded-full bg-emerald-500 shadow-[0_0_20px_rgba(16,185,129,0.55)]"></span>
             Simulador activo
+          </div>
+        </div>
+
+        <!-- Blocker overlay (shown when not logged in) -->
+        <div id="login-blocker" class="absolute inset-0 z-10 flex items-center justify-center bg-slate-50/95 backdrop-blur-sm">
+          <div class="max-w-md text-center px-6">
+            <div class="mb-6 flex justify-center">
+              <div class="flex h-20 w-20 items-center justify-center rounded-full bg-blue-100">
+                <span class="text-4xl">🔒</span>
+              </div>
+            </div>
+            <h2 class="text-3xl font-black text-slate-950 mb-3">Acceso Restringido</h2>
+            <p class="text-lg text-slate-600 leading-relaxed">
+              Por favor, inicia sesión con tus credenciales en el panel izquierdo para comenzar tu consulta financiera.
+            </p>
+            <div class="mt-8 inline-flex items-center gap-2 rounded-full bg-blue-50 px-5 py-2.5 text-sm font-bold text-blue-700">
+              <span>←</span>
+              <span>Usa el formulario de login</span>
+            </div>
           </div>
         </div>
 
