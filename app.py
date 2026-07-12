@@ -6,6 +6,7 @@ from datetime import datetime
 from flask import Flask, render_template, request, jsonify, redirect, url_for, session
 from dotenv import load_dotenv
 
+
 # Importamos las funciones adaptadas de CrewAI
 from agents.crew import run_crew_completo, registrar_auditoria
 
