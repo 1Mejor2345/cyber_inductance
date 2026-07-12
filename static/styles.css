@@ -23,7 +23,8 @@ body {
 
 .brand-panel {
   position: relative;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
   padding: 3rem;
   background:
     radial-gradient(circle at 20% 15%, rgba(37, 99, 235, 0.12), transparent 34rem),

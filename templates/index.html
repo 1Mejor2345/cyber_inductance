@@ -28,7 +28,7 @@
           />
         </svg>
 
-        <div class="relative z-10 flex h-full flex-col justify-between">
+        <div class="relative z-10 flex min-h-full flex-col justify-between gap-12 pb-4">
           <div>
             <div class="brand-pill">
               <span class="pulse-dot"></span>
@@ -42,35 +42,35 @@
             </p>
 
             <!-- Mini Login Box -->
-            <div id="login-box" class="mt-8 rounded-3xl bg-white p-6 shadow-[0_20px_50px_rgba(0,0,0,0.08)] border border-slate-100">
-              <div class="flex items-center gap-3 mb-4">
-                <div class="flex h-10 w-10 items-center justify-center rounded-full bg-blue-100">
-                  <span class="text-xl">🔐</span>
+            <div id="login-box" class="mt-12 rounded-[2.5rem] bg-white p-8 sm:p-10 shadow-[0_24px_60px_rgba(0,0,0,0.12)] border border-slate-100">
+              <div class="flex items-center gap-4 mb-6">
+                <div class="flex h-14 w-14 items-center justify-center rounded-full bg-blue-100 shadow-inner">
+                  <span class="text-2xl">🔐</span>
                 </div>
                 <div>
-                  <h3 class="text-lg font-black text-slate-950">Iniciar Sesión</h3>
-                  <p class="text-xs text-slate-500">Accede a tu perfil financiero</p>
+                  <h3 class="text-2xl font-black text-slate-950">Iniciar Sesión</h3>
+                  <p class="text-sm font-semibold text-slate-500 mt-1">Accede a tu perfil financiero</p>
                 </div>
               </div>
 
-              <form id="login-form" class="space-y-3">
+              <form id="login-form" class="space-y-5">
                 <div>
-                  <label for="username" class="block text-xs font-bold text-slate-600 mb-1.5">Usuario</label>
+                  <label for="username" class="block text-sm font-bold text-slate-600 mb-2">Usuario</label>
                   <input
                     type="text"
                     id="username"
-                    class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-950 outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100"
+                    class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4 text-base font-semibold text-slate-950 outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-100/50"
                     placeholder="Ingresa tu usuario"
                     autocomplete="username"
                   />
                 </div>
 
                 <div>
-                  <label for="password" class="block text-xs font-bold text-slate-600 mb-1.5">Contraseña</label>
+                  <label for="password" class="block text-sm font-bold text-slate-600 mb-2">Contraseña</label>
                   <input
                     type="password"
                     id="password"
-                    class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-950 outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-100"
+                    class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4 text-base font-semibold text-slate-950 outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-100/50"
                     placeholder="Ingresa tu contraseña"
                     autocomplete="current-password"
                   />
@@ -78,26 +78,26 @@
 
                 <button
                   type="submit"
-                  class="w-full rounded-xl bg-gradient-to-r from-blue-600 to-blue-700 px-5 py-3 text-sm font-black text-white shadow-[0_8px_24px_rgba(37,99,235,0.25)] transition-all hover:shadow-[0_12px_32px_rgba(37,99,235,0.35)] hover:scale-[1.02] active:scale-[0.98]"
+                  class="mt-4 w-full rounded-2xl bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-4 text-base font-black text-white shadow-[0_8px_24px_rgba(37,99,235,0.3)] transition-all hover:shadow-[0_12px_32px_rgba(37,99,235,0.45)] hover:scale-[1.02] active:scale-[0.98]"
                 >
-                  Ingresar →
+                  Ingresar a mi cuenta →
                 </button>
 
-                <div id="login-error" class="hidden rounded-lg bg-red-50 border border-red-200 p-3 text-xs font-semibold text-red-700">
-                  <span class="mr-1">⚠️</span>
+                <div id="login-error" class="hidden rounded-xl bg-red-50 border border-red-200 p-4 text-sm font-bold text-red-700">
+                  <span class="mr-2">⚠️</span>
                   <span id="login-error-message">Error al iniciar sesión</span>
                 </div>
               </form>
 
               <!-- Demo Credentials -->
-              <div class="mt-5 rounded-xl bg-slate-50 p-3 border border-slate-100">
-                <p class="text-xs font-bold text-slate-500 mb-1.5">🔑 Credenciales de prueba:</p>
-                <div class="space-y-1 text-xs">
-                  <p class="font-mono font-semibold text-slate-700">
-                    <span class="text-slate-500">Usuario:</span> cliente_demo
+              <div class="mt-8 rounded-2xl bg-slate-50 p-5 border border-slate-100 shadow-inner">
+                <p class="text-sm font-bold text-slate-500 mb-3">🔑 Credenciales de prueba:</p>
+                <div class="space-y-2 text-sm">
+                  <p class="font-mono font-bold text-slate-700 bg-white px-3 py-1.5 rounded-lg border border-slate-100 inline-block w-full">
+                    <span class="text-slate-400">Usuario:</span> cliente_demo
                   </p>
-                  <p class="font-mono font-semibold text-slate-700">
-                    <span class="text-slate-500">Contraseña:</span> 1234
+                  <p class="font-mono font-bold text-slate-700 bg-white px-3 py-1.5 rounded-lg border border-slate-100 inline-block w-full mt-1">
+                    <span class="text-slate-400">Contraseña:</span> 1234
                   </p>
                 </div>
               </div>
@@ -146,18 +146,7 @@
             </div>
           </div>
 
-          <div class="lottie-stage" aria-label="Animacion del agente inversor" style="display: flex; justify-content: center; align-items: center;">
-            <svg width="240" height="240" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="animate-pulse">
-              <rect x="3" y="11" width="18" height="10" rx="2"></rect>
-              <circle cx="12" cy="5" r="2"></circle>
-              <path d="M12 7v4"></path>
-              <line x1="8" y1="16" x2="8" y2="16"></line>
-              <line x1="16" y1="16" x2="16" y2="16"></line>
-              <path d="M4 11V9a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v2"></path>
-              <path d="M12 11v10"></path>
-              <path d="M8 21h8"></path>
-            </svg>
-          </div>
+
 
           <div class="brand-stats">
             <div>
