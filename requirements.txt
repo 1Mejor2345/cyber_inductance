@@ -1,5 +1,6 @@
 Flask==3.0.0
-python-dotenv==1.0.1
-crewai
-yfinancepytest>=7.0.0
-pytest-mock
+python-dotenv==1.2.2
+crewai==1.15.2
+yfinance==1.5.1
+pytest==9.1.1
+pytest-mock==3.15.1
