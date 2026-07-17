@@ -298,6 +298,7 @@ function handleLogout() {
   appState.answers = {};
   appState.currentQuestionIndex = 0;
   appState.proposalId = null;
+  appState.viendoHistorial = false;
   
   // Limpiar session storage
   sessionStorage.removeItem("userName");
@@ -365,7 +366,7 @@ function renderDashboard(propuestas) {
     const fechaCreacion = formatearFechaCorta(prop.fecha_creacion);
 
     return `
-      <div class="rounded-xl bg-white border-2 ${estadoConfig.borderClass} p-4 shadow-sm transition-all hover:shadow-md">
+      <button type="button" onclick="revisarPropuesta('${prop.id}')" class="w-full text-left rounded-xl bg-white border-2 ${estadoConfig.borderClass} p-4 shadow-sm transition-all hover:shadow-md">
         <div class="flex items-start justify-between mb-2">
           <div class="flex-1">
             <div class="flex items-center gap-2 mb-1">
@@ -393,9 +394,24 @@ function renderDashboard(propuestas) {
             </div>`
           : ""
         }
-      </div>
+      </button>
     `;
   }).join("");
+}
+
+async function revisarPropuesta(idPropuesta) {
+  try {
+    const response = await fetch(`/api/mi_propuesta/${idPropuesta}`);
+    if (!response.ok) {
+      throw new Error("No se pudo cargar la propuesta");
+    }
+    const data = await response.json();
+    appState.proposalId = data.id;
+    appState.viendoHistorial = true;
+    renderPortfolioState(data);
+  } catch (error) {
+    alert("Error al cargar la propuesta: " + error.message);
+  }
 }
 
 function getEstadoConfig(estado) {
@@ -461,6 +477,7 @@ function renderIcebreakerState() {
   destroyPortfolioChart();
   appState.answers = {};
   appState.currentQuestionIndex = 0;
+  appState.viendoHistorial = false;
 
   getPanel().innerHTML = `
     <div class="view">
@@ -495,9 +512,10 @@ function renderIcebreakerState() {
   document.getElementById("goal-form").addEventListener("submit", handleGoalSubmit);
 }
 
-function handleGoalSubmit(event) {
+async function handleGoalSubmit(event) {
   event.preventDefault();
   const input = document.getElementById("goal-input");
+  const submitBtn = event.target.querySelector("button[type='submit']");
   appState.goalText = input.value.trim();
 
   if (!appState.goalText) {
@@ -505,9 +523,53 @@ function handleGoalSubmit(event) {
     input.placeholder = "Escribe tu meta para que la IA pueda ayudarte...";
     return;
   }
+  
+  // Deshabilitar UI durante la validación rápida
+  input.disabled = true;
+  submitBtn.disabled = true;
+  const originalText = submitBtn.innerHTML;
+  submitBtn.innerHTML = "Validando... <span class='orb-loader inline-block ml-2 !w-4 !h-4'></span>";
 
-  // Iniciar flujo de preguntas
-  renderQuestionState();
+  try {
+    const response = await fetch("/api/validar_meta", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ goalText: appState.goalText }),
+    });
+    
+    let data;
+    try {
+      data = await response.json();
+    } catch (e) {
+      throw new Error("Respuesta inválida del servidor");
+    }
+    
+    // Restaurar UI
+    input.disabled = false;
+    submitBtn.disabled = false;
+    submitBtn.innerHTML = originalText;
+    
+    if (data.error && data.error_type === "meta_invalida") {
+      renderMetaInvalidaState(data.mensaje, data.sugerencia);
+      return;
+    }
+    
+    if (!response.ok) {
+      throw new Error(data.error || "Error al validar la meta");
+    }
+    
+    // Guardar variables extraídas si es válida
+    appState.variables_meta = data.variables_extraidas || {};
+    
+    // Iniciar flujo de preguntas
+    renderQuestionState();
+    
+  } catch (error) {
+    input.disabled = false;
+    submitBtn.disabled = false;
+    submitBtn.innerHTML = originalText;
+    alert("Error validando meta: " + error.message);
+  }
 }
 
 // ─── PASO 2: Preguntas iterativas ─────────────────────────────────────────────
@@ -770,6 +832,11 @@ async function submitProfiling() {
     if (appState.sliderAdjustments) {
       payload.sliderAdjustments = appState.sliderAdjustments;
     }
+    
+    // Add variables extracted during initial goal validation
+    if (appState.variables_meta) {
+      payload.variables_meta = appState.variables_meta;
+    }
 
     const response = await fetch("/api/analizar", {
       method: "POST",
@@ -780,12 +847,18 @@ async function submitProfiling() {
     // Detener el loader dinámico
     stopDynamicLoader();
 
+    let data;
+    try {
+      data = await response.json();
+    } catch (e) {
+      throw new Error("Respuesta inválida del servidor");
+    }
+    
     if (!response.ok) {
-      const err = await response.json();
-      throw new Error(err.detalle || err.error || "Error del servidor");
+      throw new Error(data.detalle || data.error || "Error del servidor");
     }
 
-    const data = await response.json();
+    
     appState.proposalId = data.id;
     renderPortfolioState(data);
   } catch (error) {
@@ -852,7 +925,49 @@ function stopDynamicLoader() {
   }
 }
 
-// ─── PASO 3c: Error ───────────────────────────────────────────────────────────
+// ─── PASO 3c: Error de Meta Inválida (CAMBIO 1) ─────────────────────────────────
+function renderMetaInvalidaState(mensaje, sugerencia) {
+  setState("meta-invalida");
+
+  getPanel().innerHTML = `
+    <div class="view">
+      <span class="eyebrow" style="background:#fff7ed;color:#ea580c;">
+        🚫 Meta no válida
+      </span>
+      <h2 class="mt-6 text-3xl font-black text-slate-950">No podemos procesar esta meta</h2>
+      
+      <div class="glass-card mt-6 p-5 shadow-[0_20px_50px_rgba(0,0,0,0.05)]">
+        <div class="justification-box" style="background:#fff7ed;">
+          <p class="text-sm font-black uppercase tracking-normal" style="color:#ea580c;">⚠ Razón del rechazo</p>
+          <p class="mt-2 text-base text-slate-700">${mensaje}</p>
+        </div>
+
+        <div class="justification-box mt-4" style="background:#eff6ff;">
+          <p class="text-sm font-bold text-blue-700">💡 Sugerencia</p>
+          <p class="mt-2 text-sm text-slate-600">${sugerencia}</p>
+        </div>
+
+        <div class="mt-4 justification-box" style="background:#f0fdf4;">
+          <p class="text-sm font-bold" style="color:#16a34a;">✅ Ejemplos de metas válidas:</p>
+          <ul class="mt-2 text-sm text-slate-600 list-disc list-inside space-y-1">
+            <li>Quiero ahorrar $50,000 para comprar una casa en 5 años</li>
+            <li>Planear mi retiro para dentro de 20 años con ingresos pasivos</li>
+            <li>Generar un fondo de emergencia de $10,000 en 2 años</li>
+            <li>Invertir $1,000 mensuales para educación universitaria de mis hijos</li>
+          </ul>
+        </div>
+      </div>
+
+      <button class="primary-button mt-6" type="button" id="retry-button">
+        ← Volver a intentar
+      </button>
+    </div>
+  `;
+
+  document.getElementById("retry-button").addEventListener("click", renderIcebreakerState);
+}
+
+// ─── PASO 3d: Error genérico ───────────────────────────────────────────────────────────
 function renderErrorState(message) {
   setState("error");
 
@@ -933,6 +1048,18 @@ function renderPortfolioState(data) {
           <div class="space-y-3">${assetRows}</div>
         </div>
 
+        <!-- CAMBIO 2: Gráfica de Proyección a 5 Años -->
+        <div class="mt-8">
+          <h3 class="text-lg font-black text-slate-950 mb-4">📈 Proyección de Inversión a 5 Años</h3>
+          <div class="chart-shell" style="min-height: 280px;">
+            <canvas id="projection-chart" aria-label="Proyección de crecimiento a 5 años" role="img"></canvas>
+          </div>
+          <p class="mt-3 text-xs text-slate-500 text-center">
+            *Basado en $10,000 invertidos al inicio con rendimiento estimado del portafolio. 
+            Los resultados reales pueden variar según condiciones del mercado.
+          </p>
+        </div>
+
         <div class="justification-box mt-5">
           <p class="text-sm font-black uppercase tracking-normal text-blue-600">Justificación de la IA</p>
           <p class="mt-2 text-sm">${data.justificacion || ""}</p>
@@ -956,22 +1083,47 @@ function renderPortfolioState(data) {
         </div>
 
         <div class="mt-5 flex flex-col gap-3 sm:flex-row">
-          <button class="primary-button" type="button" id="send-advisor-button">
-            Enviar propuesta a revisión →
+          <!-- CAMBIO 3: Botón de Exportación PDF -->
+          <button class="secondary-button" type="button" id="download-pdf-button" style="background:#f0f9ff; color:#0369a1; box-shadow: 0 18px 35px rgba(3, 105, 161, 0.16);">
+            📄 Descargar Propuesta Oficial
           </button>
-          <button class="secondary-button" type="button" id="restart-button">
-            Crear otra meta
-          </button>
+          
+          ${appState.viendoHistorial ? `
+            <button class="primary-button" type="button" id="back-dashboard-button">
+              ← Volver a Mis Propuestas
+            </button>
+          ` : `
+            <button class="primary-button" type="button" id="send-advisor-button">
+              Enviar propuesta a revisión →
+            </button>
+            <button class="secondary-button" type="button" id="restart-button">
+              Crear otra meta
+            </button>
+          `}
         </div>
       </div>
     </div>
   `;
 
   renderPortfolioChart(data.asignacion || []);
-  document.getElementById("restart-button").addEventListener("click", renderIcebreakerState);
-  document
-    .getElementById("send-advisor-button")
-    .addEventListener("click", handleSendToAdvisor);
+  
+  // CAMBIO 2: Renderizar gráfica de proyección a 5 años
+  renderProjectionChart(data);
+  
+  // CAMBIO 3: Event listener para exportar PDF
+  document.getElementById("download-pdf-button").addEventListener("click", exportToPDF);
+  
+  if (appState.viendoHistorial) {
+    document.getElementById("back-dashboard-button").addEventListener("click", () => {
+      appState.viendoHistorial = false;
+      renderIcebreakerState();
+    });
+  } else {
+    document.getElementById("restart-button").addEventListener("click", renderIcebreakerState);
+    document
+      .getElementById("send-advisor-button")
+      .addEventListener("click", handleSendToAdvisor);
+  }
 }
 
 // ─── Renderizar gráfica de donut ─────────────────────────────────────────────
@@ -1018,6 +1170,118 @@ function renderPortfolioChart(asignacion) {
       },
     },
   });
+}
+
+// ─── CAMBIO 2: Renderizar gráfica de proyección a 5 años ─────────────────────────
+function renderProjectionChart(data) {
+  const canvas = document.getElementById("projection-chart");
+  if (!canvas) return;
+
+  // Extraer rendimiento anualizado del portafolio (si existe en la respuesta)
+  // Si no, asumir 5% por defecto
+  const rendimientoAnual = data.rendimiento_1y_pct || 5;
+  
+  // Inversión inicial de $10,000
+  const inversionInicial = 10000;
+  
+  // Calcular proyecciones a 5 años usando interés compuesto
+  const años = [0, 1, 2, 3, 4, 5];
+  const valoresConRendimiento = años.map(año => 
+    inversionInicial * Math.pow(1 + (rendimientoAnual / 100), año)
+  );
+  const valoresSinRendimiento = años.map(() => inversionInicial); // Siempre $10,000
+
+  new Chart(canvas, {
+    type: "line",
+    data: {
+      labels: años.map(a => `Año ${a}`),
+      datasets: [
+        {
+          label: `Invertido (${rendimientoAnual.toFixed(1)}% anual)`,
+          data: valoresConRendimiento,
+          borderColor: "#10b981",
+          backgroundColor: "rgba(16, 185, 129, 0.1)",
+          borderWidth: 3,
+          tension: 0.3,
+          fill: true,
+          pointRadius: 5,
+          pointHoverRadius: 7,
+        },
+        {
+          label: "Sin invertir (0%)",
+          data: valoresSinRendimiento,
+          borderColor: "#ef4444",
+          backgroundColor: "rgba(239, 68, 68, 0.05)",
+          borderWidth: 3,
+          borderDash: [8, 4],
+          tension: 0,
+          fill: false,
+          pointRadius: 5,
+          pointHoverRadius: 7,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: {
+        duration: 1200,
+        easing: "easeOutQuart",
+      },
+      plugins: {
+        legend: {
+          display: true,
+          position: "top",
+          labels: {
+            usePointStyle: true,
+            padding: 15,
+            font: {
+              size: 12,
+              weight: "bold",
+            },
+          },
+        },
+        tooltip: {
+          callbacks: {
+            label: (ctx) => {
+              const value = ctx.parsed.y;
+              return `${ctx.dataset.label}: $${value.toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0})}`;
+            },
+          },
+        },
+      },
+      scales: {
+        y: {
+          beginAtZero: false,
+          ticks: {
+            callback: (value) => `$${(value / 1000).toFixed(0)}k`,
+          },
+          grid: {
+            color: "rgba(148, 163, 184, 0.1)",
+          },
+        },
+        x: {
+          grid: {
+            display: false,
+          },
+        },
+      },
+    },
+  });
+}
+
+// ─── CAMBIO 3: Exportar a PDF usando window.print() ──────────────────────────
+function exportToPDF() {
+  // Agregar clase temporal al body para activar estilos @media print
+  document.body.classList.add("printing");
+  
+  // Trigger print dialog
+  window.print();
+  
+  // Remover clase después de imprimir
+  setTimeout(() => {
+    document.body.classList.remove("printing");
+  }, 500);
 }
 
 // ─── PASO 5: Enviar propuesta a cola de asesores ──

@@ -7,7 +7,7 @@ from flask import Flask, render_template, request, jsonify, redirect, url_for, s
 from dotenv import load_dotenv
 
 # Importamos las funciones adaptadas de CrewAI
-from agents.crew import run_crew_completo, registrar_auditoria
+from agents.crew import run_crew_completo, registrar_auditoria, validar_meta_con_llm
 
 load_dotenv()
 
@@ -155,6 +155,25 @@ def api_login_cliente():
     }), 401
 
 
+@app.route('/api/validar_meta', methods=['POST'])
+def api_validar_meta():
+    """Valida la meta del usuario antes del cuestionario."""
+    data = request.json
+    goal_text = data.get('goalText', '')
+    
+    validacion = validar_meta_con_llm(goal_text)
+    
+    if not validacion.get("valido", True):
+        return jsonify({
+            "error": True,
+            "error_type": "meta_invalida",
+            "mensaje": validacion.get("razon", "La meta ingresada no es válida."),
+            "sugerencia": "Por favor ingresa una meta financiera real."
+        }), 400
+        
+    return jsonify(validacion)
+
+
 @app.route('/api/analizar', methods=['POST'])
 def api_analizar():
     """Ejecuta los 3 agentes IA en cadena y guarda la propuesta."""
@@ -162,13 +181,14 @@ def api_analizar():
     goal_text = data.get('goalText', '')
     answers = data.get('answers', {})
     slider_adjustments = data.get('sliderAdjustments')
+    variables_meta = data.get('variables_meta', {})
     
     if slider_adjustments:
         answers['AJUSTES_MANUALES_DEL_USUARIO'] = slider_adjustments
 
     try:
         # Ejecutamos los 3 agentes en cadena para obtener el JSON
-        resultado_json = run_crew_completo(goal_text, answers)
+        resultado_json = run_crew_completo(goal_text, answers, variables_meta)
 
         # Guardamos en la "Base de Datos"
         id_propuesta = str(uuid.uuid4())[:8]
@@ -400,6 +420,21 @@ def api_mis_propuestas():
         "total": len(propuestas_usuario),
         "usuario": usuario
     })
+
+
+@app.route('/api/mi_propuesta/<id_propuesta>', methods=['GET'])
+def api_mi_propuesta(id_propuesta):
+    """
+    Devuelve los detalles completos de una propuesta para que el cliente la revise.
+    """
+    if id_propuesta not in db_propuestas:
+        return jsonify({"error": "Propuesta no encontrada"}), 404
+        
+    prop = db_propuestas[id_propuesta]
+    detalles = prop.get("detalles", {})
+    # Inyectamos el ID para que el frontend funcione igual que al crearla
+    detalles["id"] = id_propuesta
+    return jsonify(detalles)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

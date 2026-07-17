@@ -241,13 +241,109 @@ def _limpiar_json(texto: str) -> dict:
     return {}
 
 
-def run_crew_completo(goal_text: str, risk_answers: dict) -> dict:
+def validar_meta_con_llm(goal_text: str) -> dict:
+    """
+    CAMBIO 1: Filtro de Realidad y Extracción de Metas
+    
+    Valida que el texto ingresado sea una meta financiera real antes de ejecutar
+    la cadena pesada de CrewAI. Si es inválido, devuelve error.
+    Si es válido, extrae variables clave (horizonte, sectores, monto) para sesgar el portafolio.
+    
+    Returns:
+        dict con "valido": bool, "razon": str (si es inválido), "variables_extraidas": dict (si es válido)
+    """
+    llm = _crear_llm()
+    
+    prompt_validacion = f"""Eres un validador de metas financieras. Analiza el siguiente texto del usuario:
+
+TEXTO DEL USUARIO: "{goal_text}"
+
+Debes determinar si es una meta financiera seria y realista, o si es algo inválido.
+
+INVALIDO si:
+- Es una broma o texto sin sentido ("quiero comprar la luna", "asdfghjkl")
+- Es una meta imposible con el contexto dado ("comprar Ferrari con $10")
+- No tiene relación con finanzas o inversiones
+- Es demasiado vago o vacío
+
+VALIDO si:
+- Menciona un objetivo financiero real (casa, retiro, educación, ahorro, inversión)
+- Aunque no tenga monto exacto, demuestra intención seria
+- Es coherente aunque sea breve
+
+Si es VALIDO, extrae también estas variables si las menciona (si no, usa null):
+- horizonte_tiempo: número de años estimado (o null)
+- sectores_interes: lista de sectores mencionados ["tecnologia", "inmobiliario", etc.] (o [])
+- monto_estimado: monto aproximado en USD (o null)
+
+RESPONDE EXCLUSIVAMENTE CON ESTE JSON (sin markdown):
+{{
+  "valido": true o false,
+  "razon": "explicación breve si es inválido" (solo si valido=false),
+  "variables_extraidas": {{
+    "horizonte_tiempo": número o null,
+    "sectores_interes": [],
+    "monto_estimado": número o null,
+    "tipo_meta": "retiro" | "vivienda" | "educacion" | "ahorro_general" | "inversion_corto_plazo" | null
+  }}
+}}
+"""
+    
+    try:
+        # Crear agente validador temporal
+        validador_agente = Agent(
+            role="Validador de Metas Financieras",
+            goal="Determinar si el texto del usuario es una meta financiera seria y extraer variables clave",
+            backstory="Eres el guardián contra inputs sin sentido. Solo dejas pasar metas financieras reales.",
+            llm=llm,
+            verbose=False,
+            allow_delegation=False,
+            max_rpm=MAX_RPM_SEGURO
+        )
+        
+        tarea_validacion = Task(
+            description=prompt_validacion,
+            expected_output="JSON con validación y variables extraídas",
+            agent=validador_agente
+        )
+        
+        crew_validacion = Crew(
+            agents=[validador_agente],
+            tasks=[tarea_validacion],
+            process=Process.sequential,
+            verbose=False,
+            max_rpm=MAX_RPM_SEGURO
+        )
+        
+        resultado = _ejecutar_con_retry(crew_validacion, max_intentos=3)
+        return _limpiar_json(tarea_validacion.output.raw)
+        
+    except Exception as e:
+        logger.error(f"Error en validación de meta: {e}")
+        # Si falla la validación, por seguridad asumimos que es válido (no bloquear al usuario)
+        return {
+            "valido": True,
+            "variables_extraidas": {
+                "horizonte_tiempo": None,
+                "sectores_interes": [],
+                "monto_estimado": None,
+                "tipo_meta": None
+            }
+        }
+
+
+def run_crew_completo(goal_text: str, risk_answers: dict, variables_meta: dict = None) -> dict:
     """Ejecuta los 3 agentes en cadena para alimentar el script.js
     
     IMPORTANTE: La respuesta debe ser EXCLUSIVAMENTE JSON válido, sin textos libres.
     Los puntajes se calculan según las reglas: Conservador=-10, Balanceado=0, Dinámico=+10
     Clasificación: <=-20 (Conservador), -19 a 20 (Moderado), >20 (Agresivo)
     """
+    
+    if variables_meta is None:
+        variables_meta = {}
+        
+    logger.info(f"✅ Iniciando Crew con variables extraídas: {variables_meta}")
     
     agente_perfilador, agente_analista, agente_verificador, agente_explicador, _ = _crear_agentes()
     
@@ -285,9 +381,25 @@ RESPONDE EXCLUSIVAMENTE CON ESTE JSON (sin markdown, sin texto adicional):
         agent=agente_perfilador
     )
 
+    # CAMBIO 1: Pasar variables extraídas al Analista para sesgar el portafolio
+    contexto_adicional = ""
+    if variables_meta:
+        contexto_adicional = f"""
+CONTEXTO ADICIONAL DE LA META DEL USUARIO:
+- Horizonte de tiempo estimado: {variables_meta.get('horizonte_tiempo', 'No especificado')} años
+- Sectores de interés: {', '.join(variables_meta.get('sectores_interes', [])) or 'No especificado'}
+- Tipo de meta: {variables_meta.get('tipo_meta', 'General')}
+- Monto estimado: ${variables_meta.get('monto_estimado', 'No especificado')}
+
+IMPORTANTE: Sesga la asignación hacia los sectores mencionados si los hay, y ajusta según el horizonte de tiempo.
+Si el usuario mencionó sectores específicos (ej. tecnología), incluye ETFs de esos sectores en el portafolio.
+"""
+    
     # Tarea 2: Propuesta de portafolio con instrucciones JSON estrictas
     tarea_propuesta = Task(
         description=f"""Diseña una propuesta de portafolio basada en el perfil calculado.
+
+{contexto_adicional}
 
 CATÁLOGOS DE INSTRUMENTOS REALES (Actualizado en tiempo real):
 {catalogo_vivo}
@@ -377,6 +489,20 @@ REGLAS:
     out4 = _limpiar_json(tarea_explicacion.output.raw)
     
     resultado_final = {**out1, **out2, **out3, **out4}
+    
+    # Calcular rendimiento 1y pct total del portafolio para la gráfica
+    total_yield = 0
+    try:
+        for activo in resultado_final.get("asignacion", []):
+            data_inst = buscar_instrumento(activo.get("ticker", ""))
+            rend = data_inst.get("rendimiento_1y_pct")
+            pct = activo.get("porcentaje", 0)
+            if rend and isinstance(pct, (int, float)):
+                total_yield += (rend * pct / 100)
+        resultado_final["rendimiento_1y_pct"] = round(total_yield, 2) if total_yield > 0 else 5.0
+    except Exception as e:
+        logger.warning(f"No se pudo calcular el rendimiento total: {e}")
+        resultado_final["rendimiento_1y_pct"] = 5.0
     
     # VALIDACIÓN CRÍTICA: Verificar que NO hay textos basura en los valores
     resultado_limpio = _validar_y_limpiar_resultado(resultado_final)

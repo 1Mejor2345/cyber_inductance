@@ -423,3 +423,120 @@ body {
     bottom: 0.75rem;
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   CAMBIO 3: Reglas de Impresión para PDF "One-Pager"
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+@media print {
+  /* Ocultar elementos no necesarios */
+  .brand-panel,
+  .eyebrow,
+  .primary-button,
+  .secondary-button,
+  #send-advisor-button,
+  #restart-button,
+  #download-pdf-button,
+  #login-box,
+  #user-info,
+  #dashboard-propuestas,
+  .legal-note,
+  details,
+  .ambient-blob {
+    display: none !important;
+  }
+
+  /* Hacer que el panel de interacción ocupe toda la página */
+  .app-shell {
+    display: block;
+    grid-template-columns: 1fr;
+  }
+
+  .interaction-panel {
+    min-height: auto;
+    padding: 1rem;
+    background: white;
+  }
+
+  /* Limpiar fondos y sombras */
+  body {
+    background: white !important;
+  }
+
+  .glass-card {
+    box-shadow: none !important;
+    border: 1px solid #e2e8f0;
+  }
+
+  .justification-box {
+    box-shadow: none !important;
+    border: 1px solid #e2e8f0;
+    page-break-inside: avoid;
+  }
+
+  .chart-shell {
+    box-shadow: none !important;
+    border: 1px solid #e2e8f0;
+    page-break-inside: avoid;
+  }
+
+  /* Optimizar gráficas para impresión */
+  .portfolio-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    page-break-inside: avoid;
+  }
+
+  /* Encabezado del reporte */
+  .view h2 {
+    font-size: 1.5rem;
+    color: #0f172a;
+    margin-bottom: 0.5rem;
+  }
+
+  /* Agregar encabezado de empresa al imprimir */
+  .view::before {
+    content: "Cyber Inductance — Robo-Advisor";
+    display: block;
+    font-size: 1rem;
+    font-weight: 900;
+    color: #2563eb;
+    text-align: center;
+    padding-bottom: 1rem;
+    margin-bottom: 1rem;
+    border-bottom: 2px solid #2563eb;
+  }
+
+  /* Agregar firma al final */
+  .view::after {
+    content: "Este reporte fue generado por Cyber Inductance, un sistema de asesoramiento financiero basado en IA. Los resultados mostrados son estimaciones y pueden variar según las condiciones del mercado. Consulte con un asesor financiero certificado antes de tomar decisiones de inversión.";
+    display: block;
+    font-size: 0.7rem;
+    color: #64748b;
+    text-align: center;
+    padding-top: 2rem;
+    margin-top: 2rem;
+    border-top: 1px solid #e2e8f0;
+    page-break-before: avoid;
+  }
+
+  /* Asegurar que las páginas se vean bien */
+  @page {
+    margin: 1.5cm;
+    size: A4 portrait;
+  }
+
+  /* Evitar saltos de página en secciones críticas */
+  .portfolio-grid,
+  .chart-shell,
+  .justification-box {
+    page-break-inside: avoid;
+  }
+
+  /* Colores de fondo visibles en impresión */
+  .justification-box {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
