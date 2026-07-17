@@ -12,6 +12,8 @@
 const appState = {
   currentStep: "icebreaker",
   goalText: "",
+  montoInicial: null,
+  aporteMensual: 0,
   answers: {},
   currentQuestionIndex: 0,
   proposalId: null,
@@ -498,8 +500,19 @@ function renderIcebreakerState() {
         <textarea
           id="goal-input"
           class="goal-input"
-          placeholder="Ej. Quiero comprar un departamento en 5 años y puedo ahorrar $500 al mes..."
+          placeholder="Ej. Quiero comprar un departamento en 5 años..."
         >${appState.goalText}</textarea>
+        
+        <div class="mt-4 flex flex-col gap-4 sm:flex-row">
+          <div class="flex-1">
+            <label for="monto-inicial" class="block text-sm font-bold text-slate-700 mb-1">Monto Inicial (USD) *</label>
+            <input type="number" id="monto-inicial" class="w-full rounded-lg border border-slate-300 p-2 text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" placeholder="Ej. 5000" min="100" required value="${appState.montoInicial || ''}">
+          </div>
+          <div class="flex-1">
+            <label for="aporte-mensual" class="block text-sm font-bold text-slate-700 mb-1">Aporte Mensual (USD) <span class="font-normal text-slate-400">(Opcional)</span></label>
+            <input type="number" id="aporte-mensual" class="w-full rounded-lg border border-slate-300 p-2 text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500" placeholder="Ej. 200" min="0" value="${appState.aporteMensual || ''}">
+          </div>
+        </div>
 
         <button class="primary-button mt-4" type="submit">
           Analizar mi objetivo
@@ -515,12 +528,22 @@ function renderIcebreakerState() {
 async function handleGoalSubmit(event) {
   event.preventDefault();
   const input = document.getElementById("goal-input");
+  const inputInicial = document.getElementById("monto-inicial");
+  const inputMensual = document.getElementById("aporte-mensual");
   const submitBtn = event.target.querySelector("button[type='submit']");
+  
   appState.goalText = input.value.trim();
+  appState.montoInicial = parseFloat(inputInicial.value) || null;
+  appState.aporteMensual = parseFloat(inputMensual.value) || 0;
 
   if (!appState.goalText) {
     input.focus();
     input.placeholder = "Escribe tu meta para que la IA pueda ayudarte...";
+    return;
+  }
+  if (!appState.montoInicial || appState.montoInicial < 100) {
+    alert("Por favor, ingresa un monto inicial válido (mínimo $100)");
+    inputInicial.focus();
     return;
   }
   
@@ -534,7 +557,11 @@ async function handleGoalSubmit(event) {
     const response = await fetch("/api/validar_meta", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ goalText: appState.goalText }),
+      body: JSON.stringify({ 
+        goalText: appState.goalText,
+        montoInicial: appState.montoInicial,
+        aporteMensual: appState.aporteMensual
+      }),
     });
     
     let data;
@@ -825,6 +852,8 @@ async function submitProfiling() {
   try {
     const payload = {
       goalText: appState.goalText,
+      montoInicial: appState.montoInicial,
+      aporteMensual: appState.aporteMensual,
       answers: appState.answers,
     };
     
@@ -1050,12 +1079,17 @@ function renderPortfolioState(data) {
 
         <!-- CAMBIO 2: Gráfica de Proyección a 5 Años -->
         <div class="mt-8">
-          <h3 class="text-lg font-black text-slate-950 mb-4">📈 Proyección de Inversión a 5 Años</h3>
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-lg font-black text-slate-950">📈 Proyección de Inversión a 5 Años</h3>
+            <button class="rounded border border-blue-500 text-blue-600 px-3 py-1 text-xs font-bold hover:bg-blue-50" type="button" id="btn-ver-escenarios">
+              ⏱️ Ver Escenarios en el Tiempo
+            </button>
+          </div>
           <div class="chart-shell" style="min-height: 280px;">
             <canvas id="projection-chart" aria-label="Proyección de crecimiento a 5 años" role="img"></canvas>
           </div>
           <p class="mt-3 text-xs text-slate-500 text-center">
-            *Basado en $10,000 invertidos al inicio con rendimiento estimado del portafolio. 
+            *Basado en $${data.montoInicial || appState.montoInicial || 10000} invertidos al inicio y $${data.aporteMensual || appState.aporteMensual || 0} mensuales con rendimiento estimado del portafolio. 
             Los resultados reales pueden variar según condiciones del mercado.
           </p>
         </div>
@@ -1093,9 +1127,14 @@ function renderPortfolioState(data) {
               ← Volver a Mis Propuestas
             </button>
           ` : `
-            <button class="primary-button" type="button" id="send-advisor-button">
-              Enviar propuesta a revisión →
-            </button>
+            <div class="flex flex-col gap-2 w-full sm:w-auto">
+              <button class="primary-button w-full" type="button" id="send-advisor-button">
+                Enviar propuesta a revisión →
+              </button>
+              <button class="w-full rounded-lg bg-orange-500 px-5 py-3 text-sm font-black tracking-normal text-white shadow-soft transition-all hover:bg-orange-600 hover:shadow-glow focus:outline-none focus:ring-4 focus:ring-orange-500/30" type="button" id="bypass-advisor-button">
+                ⚡ Ejecutar Inversión (Sin Asesor)
+              </button>
+            </div>
             <button class="secondary-button" type="button" id="restart-button">
               Crear otra meta
             </button>
@@ -1123,6 +1162,14 @@ function renderPortfolioState(data) {
     document
       .getElementById("send-advisor-button")
       .addEventListener("click", handleSendToAdvisor);
+    document
+      .getElementById("bypass-advisor-button")
+      .addEventListener("click", openBypassModal);
+  }
+  
+  const btnEscenarios = document.getElementById("btn-ver-escenarios");
+  if (btnEscenarios) {
+    btnEscenarios.addEventListener("click", () => openScenariosModal(data));
   }
 }
 
@@ -1177,19 +1224,37 @@ function renderProjectionChart(data) {
   const canvas = document.getElementById("projection-chart");
   if (!canvas) return;
 
-  // Extraer rendimiento anualizado del portafolio (si existe en la respuesta)
-  // Si no, asumir 5% por defecto
-  const rendimientoAnual = data.rendimiento_1y_pct || 5;
+  const baseRate = data.rendimiento_1y_pct || 5;
+  const inversionInicial = data.montoInicial || appState.montoInicial || 10000;
+  const aporteMensual = data.aporteMensual || appState.aporteMensual || 0;
   
-  // Inversión inicial de $10,000
-  const inversionInicial = 10000;
+  // Calculate variance based on risk profile
+  let variance = 2; // Default (Balanced)
+  const perfil = (data.perfil || "").toLowerCase();
+  if (perfil.includes("agresivo") || perfil.includes("dynamic")) variance = 5;
+  else if (perfil.includes("conservador") || perfil.includes("conservative")) variance = 1;
   
-  // Calcular proyecciones a 5 años usando interés compuesto
+  const optRate = baseRate + variance;
+  const pessRate = Math.max(0, baseRate - (variance * 1.5)); // Pessimistic can be lower but cap at 0 for simplicity here
+
+  // Helper function to calculate compound interest with monthly contributions
+  const calculateCompound = (rate, years) => {
+    let current = inversionInicial;
+    const monthlyRate = (rate / 100) / 12;
+    for (let i = 0; i < years * 12; i++) {
+      current = (current + aporteMensual) * (1 + monthlyRate);
+    }
+    return current;
+  };
+
   const años = [0, 1, 2, 3, 4, 5];
-  const valoresConRendimiento = años.map(año => 
-    inversionInicial * Math.pow(1 + (rendimientoAnual / 100), año)
-  );
-  const valoresSinRendimiento = años.map(() => inversionInicial); // Siempre $10,000
+  
+  const valOpt = años.map(a => calculateCompound(optRate, a));
+  const valBase = años.map(a => calculateCompound(baseRate, a));
+  const valPess = años.map(a => calculateCompound(pessRate, a));
+  
+  // Guardamos datos para el modal de escenarios
+  data._escenarios = { baseRate, optRate, pessRate, calculateCompound, inversionInicial, aporteMensual };
 
   new Chart(canvas, {
     type: "line",
@@ -1197,28 +1262,36 @@ function renderProjectionChart(data) {
       labels: años.map(a => `Año ${a}`),
       datasets: [
         {
-          label: `Invertido (${rendimientoAnual.toFixed(1)}% anual)`,
-          data: valoresConRendimiento,
+          label: `Optimista (${optRate.toFixed(1)}%)`,
+          data: valOpt,
+          borderColor: "#3b82f6",
+          backgroundColor: "rgba(59, 130, 246, 0.05)",
+          borderWidth: 2,
+          borderDash: [5, 5],
+          tension: 0.3,
+          fill: false,
+          pointRadius: 3,
+        },
+        {
+          label: `Esperado (${baseRate.toFixed(1)}%)`,
+          data: valBase,
           borderColor: "#10b981",
           backgroundColor: "rgba(16, 185, 129, 0.1)",
           borderWidth: 3,
           tension: 0.3,
           fill: true,
           pointRadius: 5,
-          pointHoverRadius: 7,
         },
         {
-          label: "Sin invertir (0%)",
-          data: valoresSinRendimiento,
+          label: `Pesimista (${pessRate.toFixed(1)}%)`,
+          data: valPess,
           borderColor: "#ef4444",
-          backgroundColor: "rgba(239, 68, 68, 0.05)",
-          borderWidth: 3,
-          borderDash: [8, 4],
-          tension: 0,
+          borderWidth: 2,
+          borderDash: [5, 5],
+          tension: 0.3,
           fill: false,
-          pointRadius: 5,
-          pointHoverRadius: 7,
-        },
+          pointRadius: 3,
+        }
       ],
     },
     options: {
@@ -1667,4 +1740,111 @@ function showErrorMessage(message) {
   panel.appendChild(errorDiv);
 
   setTimeout(() => errorDiv.remove(), 5000);
+}
+
+// ─── MODALES DE ESCENARIOS Y EJECUCIÓN AUTÓNOMA ────────────────────────────────
+
+function openScenariosModal(data) {
+  const modal = document.getElementById("modal-scenarios");
+  const content = document.getElementById("scenarios-content");
+  
+  if (!modal || !content || !data._escenarios) return;
+  
+  const esc = data._escenarios;
+  const formatearDinero = (val) => '$' + val.toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0});
+  
+  // Corto (1 año), Medio (5 años), Largo (10 años)
+  const escenariosHTML = [
+    { periodo: "Corto Plazo (1 Año)", anios: 1, color: "text-blue-600", desc: "Alta volatilidad, ideal para evaluar tolerancia inicial." },
+    { periodo: "Mediano Plazo (5 Años)", anios: 5, color: "text-emerald-600", desc: "Estabilización y crecimiento sostenido." },
+    { periodo: "Largo Plazo (10 Años)", anios: 10, color: "text-purple-600", desc: "El interés compuesto maximiza tus ganancias." }
+  ].map(s => {
+    const esperado = esc.calculateCompound(esc.baseRate, s.anios);
+    const pesimista = esc.calculateCompound(esc.pessRate, s.anios);
+    const optimista = esc.calculateCompound(esc.optRate, s.anios);
+    const invertidoBruto = esc.inversionInicial + (esc.aporteMensual * 12 * s.anios);
+    
+    return `
+      <div class="border border-slate-200 rounded-xl p-4">
+        <h3 class="font-black text-lg ${s.color}">${s.periodo}</h3>
+        <p class="text-xs text-slate-500 mb-3">${s.desc}</p>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div class="bg-slate-50 p-2 rounded text-center">
+            <span class="block text-xs font-bold text-slate-400">Total Aportado</span>
+            <span class="block font-black text-slate-700">${formatearDinero(invertidoBruto)}</span>
+          </div>
+          <div class="bg-red-50 p-2 rounded text-center border border-red-100">
+            <span class="block text-xs font-bold text-red-400">Pesimista</span>
+            <span class="block font-black text-red-600">${formatearDinero(pesimista)}</span>
+          </div>
+          <div class="bg-emerald-50 p-2 rounded text-center border border-emerald-100">
+            <span class="block text-xs font-bold text-emerald-500">Esperado</span>
+            <span class="block font-black text-emerald-600">${formatearDinero(esperado)}</span>
+          </div>
+          <div class="bg-blue-50 p-2 rounded text-center border border-blue-100">
+            <span class="block text-xs font-bold text-blue-500">Optimista</span>
+            <span class="block font-black text-blue-600">${formatearDinero(optimista)}</span>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join("");
+  
+  content.innerHTML = escenariosHTML;
+  modal.classList.add("modal-overlay--active");
+}
+
+function openBypassModal() {
+  const modal = document.getElementById("modal-bypass");
+  if (!modal) return;
+  
+  modal.classList.add("modal-overlay--active");
+  
+  const btnConfirm = document.getElementById("btn-confirm-bypass");
+  // Prevenir multiples event listeners
+  const newBtn = btnConfirm.cloneNode(true);
+  btnConfirm.parentNode.replaceChild(newBtn, btnConfirm);
+  
+  newBtn.addEventListener("click", handleBypassExecution);
+}
+
+async function handleBypassExecution() {
+  const btn = document.getElementById("btn-confirm-bypass");
+  btn.disabled = true;
+  btn.textContent = "Ejecutando...";
+  
+  try {
+    const res = await fetch("/api/ejecucion_autonoma", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id_propuesta: appState.proposalId, usuario: appState.userName }),
+    });
+    
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Error al ejecutar autónomamente");
+    
+    document.getElementById("modal-bypass").classList.remove("modal-overlay--active");
+    appState.viendoHistorial = true; 
+    cargarDashboard();
+    
+    // Cambiar estado visualmente
+    const badgeEl = document.querySelector(".status-badge");
+    if (badgeEl) {
+      badgeEl.className = "status-badge status-badge--approved";
+      badgeEl.innerHTML = "<span class='status-badge__dot'></span>Ejecutada (IA)";
+    }
+    
+    alert("✅ Inversión ejecutada autónomamente con éxito");
+    
+    // Ocultar botones
+    const btnBypass = document.getElementById("bypass-advisor-button");
+    const btnSend = document.getElementById("send-advisor-button");
+    if (btnBypass) btnBypass.style.display = "none";
+    if (btnSend) btnSend.style.display = "none";
+    
+  } catch (error) {
+    showErrorMessage(error.message);
+    btn.disabled = false;
+    btn.textContent = "Sí, ejecutar bajo mi propio riesgo";
+  }
 }

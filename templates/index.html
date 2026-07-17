@@ -196,6 +196,39 @@
     </main>
     
 
+    <!-- Modal: Escenarios Temporales -->
+    <div id="modal-scenarios" class="modal-overlay">
+      <div class="modal-box w-full max-w-2xl bg-white rounded-2xl shadow-2xl p-6">
+        <h2 class="text-2xl font-black text-slate-900 mb-4">⏱️ Escenarios en el Tiempo</h2>
+        <p class="text-slate-600 mb-6">Variaciones estimadas de tu inversión a corto, mediano y largo plazo basadas en tu perfil de riesgo.</p>
+        <div id="scenarios-content" class="space-y-4">
+          <!-- Llenado dinámicamente -->
+        </div>
+        <div class="mt-8 text-right">
+          <button onclick="document.getElementById('modal-scenarios').classList.remove('modal-overlay--active')" class="rounded-lg bg-slate-200 px-5 py-2 font-bold text-slate-700 hover:bg-slate-300">Cerrar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal: Ejecución Autónoma (Bypass Asesor) -->
+    <div id="modal-bypass" class="modal-overlay">
+      <div class="modal-box w-full max-w-lg bg-white rounded-2xl shadow-2xl p-6 border-t-8 border-orange-500">
+        <h2 class="text-2xl font-black text-slate-900 mb-4">⚠️ Advertencia Legal (Ejecución Autónoma)</h2>
+        <div class="bg-orange-50 p-4 rounded-xl mb-6 border border-orange-200">
+          <p class="text-orange-800 text-sm font-bold mb-2">Estás a punto de ejecutar una orden generada 100% por Inteligencia Artificial sin supervisión humana.</p>
+          <ul class="list-disc list-inside text-orange-700 text-xs space-y-1">
+            <li>La IA extrae datos de fuentes oficiales, pero es susceptible a alucinaciones o errores de cálculo.</li>
+            <li>No nos responsabilizamos de las pérdidas generadas por ejecutar esta propuesta directamente.</li>
+            <li>Al aceptar, asumes el riesgo total de la inversión.</li>
+          </ul>
+        </div>
+        <div class="flex justify-end gap-3 mt-6">
+          <button onclick="document.getElementById('modal-bypass').classList.remove('modal-overlay--active')" class="rounded-lg bg-slate-200 px-5 py-2 font-bold text-slate-700 hover:bg-slate-300">Cancelar</button>
+          <button id="btn-confirm-bypass" class="rounded-lg bg-orange-500 px-5 py-2 font-bold text-white hover:bg-orange-600 shadow-lg shadow-orange-500/30">Sí, ejecutar bajo mi propio riesgo</button>
+        </div>
+      </div>
+    </div>
+
     <script src="/static/script.js"></script>
   </body>
 </html>

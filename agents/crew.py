@@ -241,7 +241,7 @@ def _limpiar_json(texto: str) -> dict:
     return {}
 
 
-def validar_meta_con_llm(goal_text: str) -> dict:
+def validar_meta_con_llm(goal_text: str, monto_inicial: float = 0, aporte_mensual: float = 0) -> dict:
     """
     CAMBIO 1: Filtro de Realidad y Extracción de Metas
     
@@ -257,18 +257,20 @@ def validar_meta_con_llm(goal_text: str) -> dict:
     prompt_validacion = f"""Eres un validador de metas financieras. Analiza el siguiente texto del usuario:
 
 TEXTO DEL USUARIO: "{goal_text}"
+MONTO INICIAL DISPONIBLE: ${monto_inicial}
+APORTE MENSUAL DISPONIBLE: ${aporte_mensual}
 
 Debes determinar si es una meta financiera seria y realista, o si es algo inválido.
 
 INVALIDO si:
 - Es una broma o texto sin sentido ("quiero comprar la luna", "asdfghjkl")
-- Es una meta imposible con el contexto dado ("comprar Ferrari con $10")
+- Es matemáticamente imposible o absurdo con el dinero y tiempo dado (Ej: "comprar una casa en 2 años" si solo tiene $200 iniciales y $0 mensuales). Sé estricto con la viabilidad matemática de la meta.
 - No tiene relación con finanzas o inversiones
 - Es demasiado vago o vacío
 
 VALIDO si:
 - Menciona un objetivo financiero real (casa, retiro, educación, ahorro, inversión)
-- Aunque no tenga monto exacto, demuestra intención seria
+- La relación entre el capital disponible y la meta tiene un mínimo sentido lógico o realista.
 - Es coherente aunque sea breve
 
 Si es VALIDO, extrae también estas variables si las menciona (si no, usa null):

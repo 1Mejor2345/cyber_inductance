@@ -540,3 +540,34 @@ body {
     print-color-adjust: exact;
   }
 }
+
+/* Modals */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(248, 250, 252, 0.85);
+  backdrop-filter: blur(4px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+
+.modal-overlay--active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.modal-box {
+  transform: scale(0.95);
+  transition: transform 0.3s ease;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.modal-overlay--active .modal-box {
+  transform: scale(1);
+}

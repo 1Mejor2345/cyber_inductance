@@ -76,6 +76,8 @@ def propuesta_a_dict_asesor(id_prop: str, prop: dict) -> dict:
         "modelo_ia": "gemini-3.1-flash-lite",
         "proyeccion_anual": detalles.get("riesgo", "—"),
         "aiJustification": detalles.get("justificacion", ""),
+        "montoInicial": prop.get("monto_inicial", 10000),
+        "aporteMensual": prop.get("aporte_mensual", 0),
         "resumen_asesor": detalles.get("resumen_asesor", ""),
         "explicacion_cliente": detalles.get("explicacion_cliente", ""),
         "disclaimer": detalles.get("disclaimer", ""),
@@ -160,8 +162,10 @@ def api_validar_meta():
     """Valida la meta del usuario antes del cuestionario."""
     data = request.json
     goal_text = data.get('goalText', '')
+    monto_inicial = data.get('montoInicial', 0)
+    aporte_mensual = data.get('aporteMensual', 0)
     
-    validacion = validar_meta_con_llm(goal_text)
+    validacion = validar_meta_con_llm(goal_text, monto_inicial, aporte_mensual)
     
     if not validacion.get("valido", True):
         return jsonify({
@@ -179,6 +183,8 @@ def api_analizar():
     """Ejecuta los 3 agentes IA en cadena y guarda la propuesta."""
     data = request.json
     goal_text = data.get('goalText', '')
+    monto_inicial = data.get('montoInicial', 10000)
+    aporte_mensual = data.get('aporteMensual', 0)
     answers = data.get('answers', {})
     slider_adjustments = data.get('sliderAdjustments')
     variables_meta = data.get('variables_meta', {})
@@ -199,13 +205,17 @@ def api_analizar():
             "estado_interno": "generada",  # Estado inicial antes de enviar
             "detalles": resultado_json,
             "goal": goal_text,
+            "monto_inicial": monto_inicial,
+            "aporte_mensual": aporte_mensual,
             "fecha_creacion": datetime.now().isoformat(),
             "log": None,
             "historial": [],
         }
 
-        # Le inyectamos el ID al resultado para que el frontend lo muestre
+        # Le inyectamos el ID y los montos al resultado para que el frontend lo muestre
         resultado_json["id"] = id_propuesta
+        resultado_json["montoInicial"] = monto_inicial
+        resultado_json["aporteMensual"] = aporte_mensual
 
         return jsonify(resultado_json)
 
@@ -262,6 +272,44 @@ def api_enviar_propuesta():
         "posicion_en_cola": len(propuestas_pendientes),
         "total_en_cola": len(propuestas_pendientes)
     }), 200
+
+@app.route('/api/ejecucion_autonoma', methods=['POST'])
+def api_ejecucion_autonoma():
+    """
+    Ejecuta la propuesta automáticamente (Bypass del asesor humano).
+    Marca la propuesta como Aprobada (Ejecutada) inmediatamente.
+    """
+    data = request.json
+    id_propuesta = data.get('id_propuesta', '')
+    usuario = data.get('usuario', 'cliente_demo')
+    
+    if not id_propuesta or id_propuesta not in db_propuestas:
+        return jsonify({"error": "Propuesta no encontrada"}), 404
+        
+    prop = db_propuestas[id_propuesta]
+    
+    # Remover de la cola si estuviera ahí por algún motivo
+    if id_propuesta in propuestas_pendientes:
+        propuestas_pendientes.remove(id_propuesta)
+        
+    # Crear log de auditoría
+    log_entry = {
+        "fecha": datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
+        "accion": "Ejecutada (IA)",
+        "asesor": "Sistema Autónomo",
+        "observaciones": "El usuario aceptó los términos legales y ejecutó la orden sin revisión humana."
+    }
+    
+    prop["estado_interno"] = "aprobada"
+    prop["estado"] = "Ejecutada (IA)"
+    prop["estado_revision"] = "Ejecutada"
+    prop["usuario_cliente"] = usuario
+    prop["fecha_resolucion"] = datetime.now().isoformat()
+    prop["log"] = log_entry
+    prop["fue_editada"] = False
+    prop.setdefault("historial", []).append(log_entry)
+    
+    return jsonify({"ok": True, "mensaje": "Ejecutado exitosamente"})
 
 
 @app.route('/api/propuestas', methods=['GET'])

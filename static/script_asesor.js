@@ -266,6 +266,9 @@ function renderHistorial(historial) {
       if (actUpper.includes("APROBADA")) {
         actionClass = "approved";
         actionIcon = actUpper.includes("EDITADA") ? "✏️✅" : "✅";
+      } else if (actUpper.includes("EJECUTADA")) {
+        actionClass = "approved";
+        actionIcon = "⚡";
       }
       return `
         <div class="audit-log-item">
