@@ -291,8 +291,14 @@
               <!-- Llenado dinámicamente por JS -->
             </div>
             
-            <div style="margin-top: 1rem; padding: 1rem; background: #f8fafc; border-radius: 8px; text-align: right; font-weight: bold; border: 1px solid #e2e8f0;">
-              Total: <span id="edit-total-percent" style="color: #10b981;">100%</span>
+            <div style="margin-top: 1rem; padding: 1rem; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center;">
+              <div style="display: flex; gap: 0.5rem; align-items: center; width: 65%;">
+                <input type="text" id="nuevo-activo-nombre" placeholder="Nuevo activo o fondo..." style="flex: 1; padding: 0.4rem 0.5rem; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 0.875rem; outline: none;">
+                <button type="button" id="btn-add-activo" style="background:#10b981; color:white; border:none; border-radius:4px; padding: 0.4rem 0.75rem; font-weight:bold; cursor:pointer; font-size: 0.875rem;">➕ Añadir</button>
+              </div>
+              <div style="font-weight: bold;">
+                Total: <span id="edit-total-percent" style="color: #10b981;">100%</span>
+              </div>
             </div>
 
             <textarea

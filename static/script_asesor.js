@@ -260,8 +260,13 @@ function renderHistorial(historial) {
 
   container.innerHTML = historial
     .map((log) => {
-      const actionClass = log.accion === "aprobada" ? "approved" : "rejected";
-      const actionIcon = log.accion === "aprobada" ? "✅" : "❌";
+      const actUpper = log.accion.toUpperCase();
+      let actionClass = "rejected";
+      let actionIcon = "❌";
+      if (actUpper.includes("APROBADA")) {
+        actionClass = "approved";
+        actionIcon = actUpper.includes("EDITADA") ? "✏️✅" : "✅";
+      }
       return `
         <div class="audit-log-item">
           <div class="audit-log-item__header">
@@ -525,29 +530,14 @@ function abrirModalEditar(propuesta) {
   const container = document.getElementById("edit-assets-container");
   const totalPercent = document.getElementById("edit-total-percent");
   const btnConfirm = document.getElementById("btn-confirm-edit");
+  const btnAddActivo = document.getElementById("btn-add-activo");
+  const inputNuevoActivo = document.getElementById("nuevo-activo-nombre");
   
   if (!container || !propuesta.assets) return;
   
-  // Renderizar inputs de assets
-  container.innerHTML = propuesta.assets.map((a, i) => `
-    <div style="display: flex; align-items: center; justify-content: space-between; background: #fff; border: 1px solid #e2e8f0; padding: 0.5rem 1rem; border-radius: 6px;">
-      <div style="display: flex; align-items: center; gap: 0.5rem;">
-        <span style="width: 12px; height: 12px; border-radius: 50%; background: ${a.color}; display: inline-block;"></span>
-        <span style="font-size: 0.875rem; font-weight: 600; color: #475569;">${escapeHtml(a.name)}</span>
-      </div>
-      <div style="display: flex; align-items: center; gap: 0.5rem;">
-        <input type="number" min="0" max="100" value="${a.value}" 
-          class="edit-asset-input" 
-          data-name="${escapeHtml(a.name)}" 
-          data-ticker="${escapeHtml(a.ticker || "")}"
-          data-color="${a.color}"
-          style="width: 60px; padding: 0.25rem; border: 1px solid #cbd5e1; border-radius: 4px; text-align: right; font-weight: bold;">
-        <span style="color: #64748b; font-size: 0.875rem;">%</span>
-      </div>
-    </div>
-  `).join("");
+  // Clonar para no mutar el estado original hasta guardar
+  let currentAssets = JSON.parse(JSON.stringify(propuesta.assets));
   
-  // Función para actualizar total
   const updateTotal = () => {
     const inputs = document.querySelectorAll(".edit-asset-input");
     let sum = 0;
@@ -557,13 +547,78 @@ function abrirModalEditar(propuesta) {
     totalPercent.style.color = sum === 100 ? "#10b981" : "#ef4444";
     btnConfirm.disabled = sum !== 100;
   };
+
+  const renderEditList = () => {
+    container.innerHTML = currentAssets.map((a, i) => `
+      <div style="display: flex; align-items: center; justify-content: space-between; background: #fff; border: 1px solid #e2e8f0; padding: 0.5rem 1rem; border-radius: 6px;">
+        <div style="display: flex; align-items: center; gap: 0.5rem; flex: 1;">
+          <button type="button" class="btn-remove-asset" data-index="${i}" style="background:none; border:none; cursor:pointer; font-size:1.1rem; padding:0; margin-right:0.5rem;" title="Eliminar activo">🗑️</button>
+          <span style="width: 12px; height: 12px; border-radius: 50%; background: ${a.color}; display: inline-block;"></span>
+          <span style="font-size: 0.875rem; font-weight: 600; color: #475569;">${escapeHtml(a.name || a.nombre || "")}</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 0.5rem;">
+          <input type="number" min="0" max="100" value="${a.value || a.porcentaje || 0}" 
+            class="edit-asset-input" 
+            data-index="${i}"
+            data-name="${escapeHtml(a.name || a.nombre || "")}" 
+            data-ticker="${escapeHtml(a.ticker || "")}"
+            data-color="${a.color}"
+            style="width: 60px; padding: 0.25rem; border: 1px solid #cbd5e1; border-radius: 4px; text-align: right; font-weight: bold;">
+          <span style="color: #64748b; font-size: 0.875rem;">%</span>
+        </div>
+      </div>
+    `).join("");
+    
+    // Listeners para los inputs de porcentaje
+    document.querySelectorAll(".edit-asset-input").forEach(input => {
+      input.addEventListener("input", (e) => {
+        const idx = e.target.dataset.index;
+        currentAssets[idx].value = parseInt(e.target.value) || 0;
+        updateTotal();
+      });
+    });
+    
+    // Listeners para eliminar fila
+    document.querySelectorAll(".btn-remove-asset").forEach(btn => {
+      btn.addEventListener("click", (e) => {
+        const idx = e.target.dataset.index;
+        currentAssets.splice(idx, 1);
+        renderEditList();
+      });
+    });
+    
+    updateTotal();
+  };
+
+  // Agregar nuevo activo manualmente
+  if (btnAddActivo && inputNuevoActivo) {
+    // Clonar para evitar múltiples listeners
+    const newBtn = btnAddActivo.cloneNode(true);
+    btnAddActivo.parentNode.replaceChild(newBtn, btnAddActivo);
+    
+    newBtn.addEventListener("click", () => {
+      const nombre = inputNuevoActivo.value.trim();
+      if (!nombre) {
+        showToast("Por favor, ingresa el nombre del activo.", "error");
+        return;
+      }
+      
+      const colores = ["#f87171", "#fb923c", "#fbbf24", "#a3e635", "#34d399", "#2dd4bf", "#38bdf8", "#818cf8", "#a78bfa", "#f472b6"];
+      const colorAlAzar = colores[Math.floor(Math.random() * colores.length)];
+      
+      currentAssets.push({
+        name: nombre,
+        ticker: "",
+        value: 0,
+        color: colorAlAzar
+      });
+      
+      inputNuevoActivo.value = "";
+      renderEditList();
+    });
+  }
   
-  // Listeners para actualizar en vivo
-  document.querySelectorAll(".edit-asset-input").forEach(input => {
-    input.addEventListener("input", updateTotal);
-  });
-  
-  updateTotal();
+  renderEditList();
   abrirModal("modal-editar");
 }
 

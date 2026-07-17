@@ -24,8 +24,8 @@ logger = logging.getLogger(__name__)
 # El prefijo "gemini/" es OBLIGATORIO para usar API Key en vez de Vertex AI.
 # ============================================================================
 
-MODELO_PRINCIPAL = "gemini/gemini-3.5-flash"
-MODELO_FALLBACK = "gemini/gemini-3.1-flash-lite"
+MODELO_PRINCIPAL = "gemini/gemini-3.1-flash-lite"
+MODELO_FALLBACK = "gemini/gemini-3.5-flash"
 
 # Free tier: ~10-15 RPM, ~1500 RPD. Ponemos max_rpm bajo para no saturar.
 MAX_RPM_SEGURO = 2

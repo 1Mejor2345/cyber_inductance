@@ -73,7 +73,7 @@ def propuesta_a_dict_asesor(id_prop: str, prop: dict) -> dict:
         "score": detalles.get("score"),
         "fecha_creacion": prop.get("fecha_creacion", ""),
         "version_reglas": detalles.get("version_reglas", "v1.0"),
-        "modelo_ia": "gemini-3.5-flash",
+        "modelo_ia": "gemini-3.1-flash-lite",
         "proyeccion_anual": detalles.get("riesgo", "—"),
         "aiJustification": detalles.get("justificacion", ""),
         "resumen_asesor": detalles.get("resumen_asesor", ""),
